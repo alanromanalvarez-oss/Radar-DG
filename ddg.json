@@ -1,0 +1,72 @@
+{
+  "_instrucciones": "Este archivo es el DDG (Diccionario de Decisiones Dorothy Gaynor). Edita las listas de 'valores_posibles' para agregar categorías o valores nuevos. La app se los manda a la IA como referencia obligatoria en cada análisis -- no la IA no debe inventar valores fuera de estas listas salvo que marques 'permitir_nuevos': true en una dimensión.",
+
+  "categorias_cubiertas": [
+    "Fiesta", "Sandalia", "Alpargata", "Zapatilla", "Flat", "Confort", "Tenis"
+  ],
+  "categorias_sin_definir_en_ddg": [
+    "Bota", "Botín", "Choclo", "Mocasín", "Ugg", "Balerina"
+  ],
+  "_nota_categorias": "Estas 6 categorías existen en el catálogo (con inventario real) pero el DDG todavía no les asignó ocasión/altura/silueta/etc. de referencia. La IA las analizará igual, pero marcará explícitamente que faltan en el DDG.",
+
+  "dimensiones": {
+    "ocasion_de_uso": {
+      "valores_posibles": ["Formal", "Diario", "Fiesta", "Relajado"],
+      "definida_en_ddg": true
+    },
+    "altura": {
+      "valores_posibles": ["Plano", "Tacón bajo", "Tacón medio", "Tacón alto", "Plataforma"],
+      "definida_en_ddg": true,
+      "grupo_estructural": {
+        "Plano": "sin_tacon",
+        "Plataforma": "plataforma",
+        "Tacón bajo": "con_tacon",
+        "Tacón medio": "con_tacon",
+        "Tacón alto": "con_tacon"
+      },
+      "_nota": "grupo_estructural se usa como filtro duro: dos productos de distinto grupo casi nunca resuelven la misma decisión de compra, sin importar que compartan color/ocasión/estilo."
+    },
+    "silueta": {
+      "valores_posibles": ["Cerrada", "Destalonado", "Abierta"],
+      "definida_en_ddg": true
+    },
+    "punta": {
+      "valores_posibles": ["Redonda", "Cuadrada", "Puntal", "Abierta"],
+      "definida_en_ddg": true
+    },
+    "estilo_visual": {
+      "valores_posibles": ["Clásico", "Moda", "Tendencia"],
+      "definida_en_ddg": true
+    },
+    "color": {
+      "valores_posibles": ["Negros", "Neutros", "Blancos", "Metálicos", "Colores vivos", "Pasteles"],
+      "definida_en_ddg": true
+    },
+    "tipo_de_outfit": {
+      "valores_posibles": ["Jeans", "Vestido", "Pantalón", "Falda", "Fiesta"],
+      "definida_en_ddg": true
+    },
+    "precio_percibido": {
+      "valores_posibles": ["Adecuado", "Premium"],
+      "definida_en_ddg": true
+    },
+    "nivel_de_comodidad": {
+      "valores_posibles": [],
+      "definida_en_ddg": false,
+      "_nota": "Falta que Dorothy Gaynor defina la escala (ej. Básico / Medio / Alto) y el criterio para asignarla."
+    },
+    "tipo_de_construccion": {
+      "valores_posibles": [],
+      "definida_en_ddg": false,
+      "_nota": "Parcialmente cubierta por silueta + punta, pero falta una dimensión explícita de materiales/armado."
+    },
+    "cliente_objetivo": {
+      "valores_posibles": [],
+      "definida_en_ddg": false
+    },
+    "rol_del_producto": {
+      "valores_posibles": [],
+      "definida_en_ddg": false
+    }
+  }
+}

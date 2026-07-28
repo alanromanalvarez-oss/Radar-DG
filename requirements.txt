@@ -1,0 +1,6 @@
+streamlit>=1.38
+anthropic>=0.34
+pillow>=10.0
+imagehash>=4.3
+pandas>=2.2
+pypdf>=6.0
