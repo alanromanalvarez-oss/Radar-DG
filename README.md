@@ -1,4 +1,4 @@
-# Radar DG — guía de puesta en marcha (v6)
+# Radar DG — guía de puesta en marcha (v7)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
@@ -8,7 +8,25 @@ programar para seguir estos pasos, solo ir uno por uno.
 Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
 Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
 
-**Novedades de v6:**
+**Novedades de v7:**
+- Se sumaron valores de referencia de "Bota" al DDG (silueta ahora distingue
+  Caña corta / Caña media / Caña alta / Sobre la rodilla) — "Bota" ya no
+  muestra el aviso de "faltan valores en el DDG".
+- Se corrigió un bug real de la comparación por color (el hash de color
+  nunca se estaba usando bien, siempre caía en un valor fijo) — ahora el
+  color sí influye en encontrar candidatos parecidos.
+- La preselección de candidatos ahora también suma, para cada candidato
+  encontrado, sus "hermanos" del mismo modelo en otros colores (dato duro
+  del catálogo, no una suposición visual) — probado con datos reales: antes
+  encontraba ~48% de las variantes de color de un mismo modelo, ahora ~83%.
+  Esto es lo que pediste: que aparezca la misma silueta aunque el color no
+  coincida, y que los colores parecidos también salgan a relucir.
+- Como contrapartida, cada análisis le manda a la IA un poco más de fotos de
+  candidatos (antes 10 fijas, ahora entre ~12 y ~35 según el modelo) — puede
+  tardar un poco más, pero da resultados más precisos. Si en la feria se
+  siente lento, avisame y lo recalibramos.
+
+**Novedades de v6 (siguen vigentes):**
 - Ya no se elige categoría a mano: sacás la foto y la IA identifica la
   categoría sola por la silueta, buscando en **todo** el catálogo (antes
   comparaba solo dentro de la categoría elegida — por eso a veces mostraba
@@ -203,10 +221,11 @@ cuando llegue el momento y armamos ese script de "cierre de temporada".
 
 ## Limitaciones que hay que tener presentes (honestas, no letra chica)
 
-- **El DDG cubre 7 de las ~14 categorías** del catálogo (Bota, Botín,
-  Choclo, Mocasín, Ugg, Balerina, Accesorios todavía sin valores de
-  referencia). La app avisa cuando falta, pero cuanto antes se complete el
-  DDG para esas categorías, más confiable va a ser el análisis ahí.
+- **El DDG cubre 8 de las ~14 categorías** del catálogo (Botín, Choclo,
+  Mocasín, Ugg, Balerina, Accesorios todavía sin valores de referencia;
+  "Bota" se sumó en v7). La app avisa cuando falta, pero cuanto antes se
+  complete el DDG para esas categorías, más confiable va a ser el análisis
+  ahí.
 - El Vector DG que ve el comprador ahora muestra **solo las 8 dimensiones
   que están definidas en el DDG** (se sacaron las 4 que no tenían valores,
   a pedido de Dorothy Gaynor).

@@ -2,12 +2,12 @@
   "_instrucciones": "Este archivo es el DDG (Diccionario de Decisiones Dorothy Gaynor). Edita las listas de 'valores_posibles' para agregar categorías o valores nuevos. La app se los manda a la IA como referencia obligatoria en cada análisis -- no la IA no debe inventar valores fuera de estas listas salvo que marques 'permitir_nuevos': true en una dimensión.",
 
   "categorias_cubiertas": [
-    "Fiesta", "Sandalia", "Alpargata", "Zapatilla", "Flat", "Confort", "Tenis"
+    "Fiesta", "Sandalia", "Alpargata", "Zapatilla", "Flat", "Confort", "Tenis", "Bota"
   ],
   "categorias_sin_definir_en_ddg": [
-    "Bota", "Botín", "Choclo", "Mocasín", "Ugg", "Balerina"
+    "Botín", "Choclo", "Mocasín", "Ugg", "Balerina"
   ],
-  "_nota_categorias": "Estas 6 categorías existen en el catálogo (con inventario real) pero el DDG todavía no les asignó ocasión/altura/silueta/etc. de referencia. La IA las analizará igual, pero marcará explícitamente que faltan en el DDG.",
+  "_nota_categorias": "Estas 5 categorías existen en el catálogo (con inventario real) pero el DDG todavía no les asignó ocasión/altura/silueta/etc. de referencia. La IA las analizará igual, pero marcará explícitamente que faltan en el DDG. 'Bota' se sumó en esta version (ver silueta.valores_posibles_extra_bota).",
 
   "dimensiones": {
     "ocasion_de_uso": {
@@ -27,8 +27,14 @@
       "_nota": "grupo_estructural se usa como filtro duro: dos productos de distinto grupo casi nunca resuelven la misma decisión de compra, sin importar que compartan color/ocasión/estilo."
     },
     "silueta": {
-      "valores_posibles": ["Cerrada", "Destalonado", "Abierta"],
-      "definida_en_ddg": true
+      "valores_posibles": ["Cerrada", "Destalonado", "Abierta", "Caña corta", "Caña media", "Caña alta", "Sobre la rodilla"],
+      "definida_en_ddg": true,
+      "grupo_estructural": {
+        "Cerrada": "cerrada", "Destalonado": "destalonado", "Abierta": "abierta",
+        "Caña corta": "bota_caña_corta", "Caña media": "bota_caña_media",
+        "Caña alta": "bota_caña_alta", "Sobre la rodilla": "bota_sobre_rodilla"
+      },
+      "_nota": "Las ultimas 4 opciones ('Caña corta/media/alta', 'Sobre la rodilla') se agregaron para Bota (a pedido de Dorothy Gaynor): 'Cerrada/Destalonado/Abierta' estaban pensadas para zapato bajo y no distinguian un tipo de bota de otro. grupo_estructural es filtro duro: dos botas de distinta altura de caña no resuelven la misma decision de compra aunque compartan color."
     },
     "punta": {
       "valores_posibles": ["Redonda", "Cuadrada", "Puntal", "Abierta"],

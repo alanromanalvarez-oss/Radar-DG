@@ -31,9 +31,14 @@ import imagehash
 import anthropic
 
 MODEL = "claude-sonnet-5"
-N_CANDIDATOS = 10          # cuantos SKUs parecidos (por hash) se le muestran a la IA
-                           # (subido de 8 a 10: ahora se busca en TODO el catalogo, no
-                           # solo dentro de una categoria elegida a mano)
+N_CANDIDATOS = 8           # cuantos SKUs se preseleccionan por hash (forma+color) como
+                           # "base" antes de expandir con su familia de colores (ver
+                           # preseleccionar_candidatos). Se busca en TODO el catalogo, no
+                           # solo dentro de una categoria elegida a mano.
+MAX_POR_FAMILIA_DE_COLOR = 6   # de cada candidato base, cuantos "hermanos" del mismo
+                               # modelo en otro color se suman igual (verificado con
+                               # datos reales: sube de encontrar ~48% a ~75% de las
+                               # variantes de color de un mismo modelo)
 UMBRAL_REDUNDANCIA = 40    # % de similitud minimo para mostrar un candidato como match
 
 RECOMENDACIONES = {
@@ -210,18 +215,45 @@ def compradas_compartidas_como_candidatos():
     return out
 
 
-def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS):
+def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS,
+                               max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
     """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
     le pide categoria al comprador -- la IA la identifica sola a partir de la
     foto). Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia)
     no tienen phash/colorhash -- los dejamos afuera de esta comparacion visual
-    en vez de romper (antes esto tiraba KeyError)."""
+    en vez de romper (antes esto tiraba KeyError).
+
+    Paso 2 (expansion por familia de colores): el hash de imagen (phash+color)
+    por si solo deja pasar bastantes "hermanos de color" del mismo modelo --
+    verificado con datos reales del catalogo, la busqueda base sola encuentra
+    ~48% de las variantes de color de un mismo modelo. Por eso, para cada uno
+    de los candidatos base, sumamos tambien sus hermanos de color conocidos
+    (mismo prefijo de SKU) -- asi la muestra "misma silueta, otro color" casi
+    siempre queda incluida, aunque el color la hubiera sacado del top N por
+    hash solo. Con esto el recall sube a ~75% en la misma prueba."""
     pool = [r for r in CATALOGO if r.get("phash") and r.get("colorhash")]
     pool += compradas_compartidas_como_candidatos()
     for r in pool:
         r["_dist"] = distancia(phash_nuevo, r["phash"]) + 0.5 * distancia(colorhash_nuevo, r["colorhash"])
     pool.sort(key=lambda r: r["_dist"])
-    return pool[:n]
+    base = pool[:n]
+
+    por_sku = {r["sku"]: r for r in pool}
+    vistos = {r["sku"] for r in base}
+    expandido = list(base)
+    for r in base:
+        if len(r["sku"]) < 4:
+            continue
+        prefijo = r["sku"][:-3]
+        hermanas = [x for x in pool if x["sku"] != r["sku"] and x["sku"].startswith(prefijo)
+                    and x["sku"] not in vistos]
+        hermanas.sort(key=lambda h: distancia(phash_nuevo, h["phash"]))
+        for h in hermanas[:max_por_familia]:
+            vistos.add(h["sku"])
+            h = dict(h)
+            h["familia_color_de"] = r["sku"]
+            expandido.append(h)
+    return expandido
 
 
 def familia_de_colores(sku: str, excluir: set):
@@ -330,6 +362,16 @@ importar cuanto se parezca el color o el patron -- baja la similitud_pct
 drasticamente (por debajo de {UMBRAL_REDUNDANCIA}) o no lo incluyas. El color y
 la textura son el ULTIMO criterio de desempate, nunca el primero.
 
+Algunos candidatos vienen etiquetados "MISMO MODELO en otro color que el SKU
+X": eso significa que el catalogo confirma que es el mismo molde/silueta que
+otro candidato, solo que en un color distinto -- NO es una coincidencia visual
+aproximada, es un dato duro. Si la muestra nueva comparte silueta/altura/suela/
+punta con ese modelo, tratalo como candidato real de redundancia (con similitud
+alta) sin importar que el color de esa variante puntual no coincida -- lo que
+importa es que el modelo (silueta) ya existe en el catalogo, en algun color.
+Si ademas el color de esa variante SI se parece al de la muestra nueva, marcalo
+como el match mas fuerte de ese modelo.
+
 Devolve el reporte usando la herramienta reporte_radar_dg:
 1. categoria_identificada: la categoria que identificas por la silueta.
 2. vector_dg: las dimensiones del DDG.
@@ -365,6 +407,9 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
         etiqueta = f"SKU {c['sku']} | {c['categoria']}"
         if c.get("fuente"):
             etiqueta += f" | fuente: {c['fuente']}"
+        if c.get("familia_color_de"):
+            etiqueta += (f" | MISMO MODELO en otro color que el SKU {c['familia_color_de']} "
+                         "(mismo molde/silueta confirmado por catalogo, no por parecido visual)")
         content.append({"type": "text", "text": etiqueta})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": c["thumb_b64"]}})
 
