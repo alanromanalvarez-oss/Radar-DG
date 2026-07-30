@@ -1,10 +1,13 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v5
+Radar DG - app para compradores en feria (ej. SAPICA) -- v6
 =============================================================
-El comprador abre este link en el celular, elige categoria, pone
-proveedor y costo, saca (o sube) una foto de la muestra, y la app le
-devuelve un reporte corto: vector de decision, redundancias (con foto,
-inventario, venta, ST, costo y precio), huecos y recomendacion.
+El comprador abre este link en el celular, saca (o sube) una foto de la
+muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
+silueta y busca en TODO el catalogo -- y la app le devuelve un reporte
+corto: categoria identificada, vector de decision, redundancias (con
+foto, inventario, venta, ST, costo, precio y otros colores disponibles),
+huecos y recomendacion. Recien despues del analisis se pide nombre,
+proveedor y costo, solo si decide guardarlo.
 
 Cada foto analizada se guarda automaticamente en un Google Sheet
 compartido (comprador, proveedor, costo, categoria, resultados) para que
@@ -28,7 +31,9 @@ import imagehash
 import anthropic
 
 MODEL = "claude-sonnet-5"
-N_CANDIDATOS = 8           # cuantos SKUs parecidos (por hash) se le muestran a la IA
+N_CANDIDATOS = 10          # cuantos SKUs parecidos (por hash) se le muestran a la IA
+                           # (subido de 8 a 10: ahora se busca en TODO el catalogo, no
+                           # solo dentro de una categoria elegida a mano)
 UMBRAL_REDUNDANCIA = 40    # % de similitud minimo para mostrar un candidato como match
 
 RECOMENDACIONES = {
@@ -77,7 +82,6 @@ def get_anthropic_client():
 CATALOGO = cargar_catalogo()
 DDG = cargar_ddg()
 DIMENSIONES_DDG = list(DDG.get("dimensiones", {}).keys())
-CATEGORIAS = sorted({r["categoria"] for r in CATALOGO})
 
 
 # ------------------------------------------------------------------
@@ -157,8 +161,15 @@ def foto_a_hashes(pil_img: Image.Image):
 
 
 def distancia(hash_a: str, hash_b: str) -> int:
+    """Distancia de Hamming a nivel de bits entre dos hashes en hex.
+    OJO: se compara el string hex directamente (no via imagehash.hex_to_hash),
+    porque hex_to_hash asume un arreglo cuadrado y con colorhash (que no lo es)
+    siempre tiraba excepcion -- en la practica, el color nunca influia en la
+    preseleccion de candidatos. Con esta comparacion bit a bit funciona igual
+    de bien para phash (verificado: da identico resultado que antes) y ademas
+    funciona correctamente para colorhash."""
     try:
-        return imagehash.hex_to_hash(hash_a) - imagehash.hex_to_hash(hash_b)
+        return bin(int(hash_a, 16) ^ int(hash_b, 16)).count("1")
     except Exception:
         return 999
 
@@ -171,14 +182,13 @@ def thumb_b64(pil_img: Image.Image, size=(180, 180), quality=60) -> str:
     return base64.b64encode(buf.getvalue()).decode()
 
 
-def compradas_compartidas_como_candidatos(categoria: str):
+def compradas_compartidas_como_candidatos():
     """Muestras que CUALQUIER comprador ya marco como compradas en esta feria,
-    convertidas al mismo formato que los items del catalogo para poder compararlas."""
+    convertidas al mismo formato que los items del catalogo para poder compararlas.
+    Se buscan en TODA la feria (no filtradas por categoria), igual que el resto."""
     out = []
     for fila in leer_historial_compartido():
         if str(fila.get("comprada", "")).strip().upper() != "SI":
-            continue
-        if fila.get("categoria") != categoria:
             continue
         if not fila.get("foto_base64"):
             continue
@@ -190,7 +200,7 @@ def compradas_compartidas_como_candidatos(categoria: str):
             continue
         out.append({
             "sku": f"COMPRADA-EN-FERIA ({fila.get('comprador') or 'equipo'})",
-            "categoria": categoria,
+            "categoria": fila.get("categoria", ""),
             "inventario": 0, "ventas": 0, "sell_through_pct": 0,
             "costo": fila.get("costo"), "precio": None,
             "phash": phash, "colorhash": colorhash,
@@ -200,16 +210,29 @@ def compradas_compartidas_como_candidatos(categoria: str):
     return out
 
 
-def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, categoria, n=N_CANDIDATOS):
-    # Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia) no
-    # tienen phash/colorhash -- los dejamos afuera de esta comparacion visual
-    # en vez de romper (antes esto tiraba KeyError).
-    pool = [r for r in CATALOGO if r["categoria"] == categoria and r.get("phash") and r.get("colorhash")]
-    pool += compradas_compartidas_como_candidatos(categoria)
+def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS):
+    """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
+    le pide categoria al comprador -- la IA la identifica sola a partir de la
+    foto). Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia)
+    no tienen phash/colorhash -- los dejamos afuera de esta comparacion visual
+    en vez de romper (antes esto tiraba KeyError)."""
+    pool = [r for r in CATALOGO if r.get("phash") and r.get("colorhash")]
+    pool += compradas_compartidas_como_candidatos()
     for r in pool:
         r["_dist"] = distancia(phash_nuevo, r["phash"]) + 0.5 * distancia(colorhash_nuevo, r["colorhash"])
     pool.sort(key=lambda r: r["_dist"])
     return pool[:n]
+
+
+def familia_de_colores(sku: str, excluir: set):
+    """Heuristica: en este catalogo el SKU = modelo base + 3 digitos de color
+    (ej. D06950176501 y D06950176650 son el mismo modelo en 2 colores).
+    Devuelve otros SKUs del mismo modelo base que existan en el catalogo."""
+    if not sku or len(sku) < 4:
+        return []
+    base = sku[:-3]
+    return sorted({r["sku"] for r in CATALOGO
+                   if r["sku"] != sku and r["sku"].startswith(base) and r["sku"] not in excluir})
 
 
 # ------------------------------------------------------------------
@@ -223,6 +246,13 @@ def construir_reporte_tool():
         "input_schema": {
             "type": "object",
             "properties": {
+                "categoria_identificada": {
+                    "type": "string",
+                    "description": "La categoria de calzado que identificas en la foto (vos la determinas, "
+                                    "el comprador NO la eligio de antemano). Usa un nombre corto y consistente "
+                                    "(ej. 'Bota', 'Botín', 'Sandalia', 'Zapato', 'Mocasín', 'Tenis', 'Choclo', "
+                                    "'Ugg', 'Balerina', 'Plataforma', 'Accesorio').",
+                },
                 "vector_dg": {
                     "type": "object",
                     "description": "Una entrada por cada dimension del DDG (solo estas, ninguna otra).",
@@ -252,7 +282,7 @@ def construir_reporte_tool():
                 "sku_a_sustituir": {"type": ["string", "null"]},
                 "motivo": {"type": "string", "description": "Una frase corta, fundamentada en cobertura de decisiones."},
             },
-            "required": ["vector_dg", "redundancias", "huecos", "indice_similitud_dg",
+            "required": ["categoria_identificada", "vector_dg", "redundancias", "huecos", "indice_similitud_dg",
                          "indice_cobertura_nueva_dg", "recomendacion", "motivo"],
         },
     }
@@ -276,20 +306,39 @@ No inventes valores fuera de las listas del DDG.
 DDG:
 {ddg_texto}
 
-Se te va a mostrar una foto nueva (la muestra que el comprador fotografio en la
-feria) y una lista corta de candidatos (los mas parecidos por forma/color,
-preseleccionados automaticamente, algunos del catalogo vigente y otros ya
-marcados como "comprados en esta feria" por el equipo). Esta lista NO es todo
-el universo de referencia; son solo los mas visualmente parecidos dentro de la
-misma categoria.
+El comprador NO elige categoria de antemano: vos tenes que identificar la
+categoria del calzado fotografiado a partir de la silueta (campo
+categoria_identificada). La preseleccion de candidatos que se te muestra a
+continuacion se hizo buscando en TODO el catalogo (no esta filtrada por
+categoria), asi que vas a ver candidatos de categorias distintas mezclados --
+es tu trabajo descartar los que no compiten realmente por la misma decision de
+compra, sin importar que hayan quedado preseleccionados por parecido superficial
+de color o textura.
+
+REGLA DURA DE PRECISION ESTRUCTURAL (la mas importante de todas): dos muestras
+NUNCA pueden considerarse similares o redundantes si difieren en estructura,
+aunque compartan color, textura o material. Compara con atencion, en este orden
+de importancia:
+1. Silueta general (bota / botin / choclo / sandalia / plataforma / balerina / etc.)
+2. Altura de caña / tacon (plano, con plataforma, tacon bajo/medio/alto, caña alta/baja)
+3. Tipo de suela (plana, plataforma, con cuña, deportiva, etc.)
+4. Forma de la punta (redonda, cuadrada, puntiaguda, abierta)
+Si una muestra difiere claramente de un candidato en CUALQUIERA de estos 4
+puntos (ej. un zapato de piso "Confort" vs una bota con caña alta, o una punta
+cuadrada vs una punta puntiaguda), ese candidato NO es una redundancia real, sin
+importar cuanto se parezca el color o el patron -- baja la similitud_pct
+drasticamente (por debajo de {UMBRAL_REDUNDANCIA}) o no lo incluyas. El color y
+la textura son el ULTIMO criterio de desempate, nunca el primero.
 
 Devolve el reporte usando la herramienta reporte_radar_dg:
-1. vector_dg: las dimensiones del DDG.
-2. redundancias: SOLO candidatos que realmente compiten por la misma decision de
-   compra (misma altura/silueta/ocasion). No fuerces coincidencias.
-3. huecos: una frase.
-4. Los dos indices (0-100).
-5. La recomendacion final con motivo (una frase, fundamentada en cobertura de
+1. categoria_identificada: la categoria que identificas por la silueta.
+2. vector_dg: las dimensiones del DDG.
+3. redundancias: SOLO candidatos que realmente compiten por la misma decision de
+   compra (misma silueta + misma altura/tacon + suela + punta compatibles). No
+   fuerces coincidencias por color o textura parecidos.
+4. huecos: una frase.
+5. Los dos indices (0-100).
+6. La recomendacion final con motivo (una frase, fundamentada en cobertura de
    decisiones, nunca "me gusta / no me gusta")."""
 
 
@@ -302,11 +351,15 @@ def image_block(pil_img: Image.Image, max_side=512):
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}
 
 
-def analizar(client, foto_nueva: Image.Image, categoria: str, candidatos: list):
+def analizar(client, foto_nueva: Image.Image, candidatos: list):
     content = [
-        {"type": "text", "text": f"Foto de la muestra nueva (categoria declarada: {categoria}):"},
+        {"type": "text", "text": "Foto de la muestra nueva (identifica vos la categoria por la silueta, "
+                                  "no fue elegida por el comprador):"},
         image_block(foto_nueva),
-        {"type": "text", "text": f"Candidatos preseleccionados ({len(candidatos)}), del mas al menos parecido:"},
+        {"type": "text", "text": f"Candidatos preseleccionados ({len(candidatos)}) buscando en TODO el "
+                                  "catalogo, del mas al menos parecido por forma/color (pueden incluir "
+                                  "categorias distintas a la de la muestra nueva, descarta las que no "
+                                  "corresponda):"},
     ]
     for c in candidatos:
         etiqueta = f"SKU {c['sku']} | {c['categoria']}"
@@ -354,31 +407,38 @@ if not sheets_disponible():
     st.info("La base compartida (Google Sheets) todavía no está conectada — cada análisis "
              "solo queda en este celular por ahora. Ver README para conectarla.")
 
-categoria = st.selectbox("Categoría", CATEGORIAS)
-if categoria in DDG.get("categorias_sin_definir_en_ddg", []):
-    st.warning(f"'{categoria}' todavía no tiene valores de referencia en el DDG.")
+if "reset_ctr" not in st.session_state:
+    st.session_state.reset_ctr = 0
 
-foto = st.camera_input("Tomá la foto de la muestra")
+col_reset1, col_reset2 = st.columns([3, 1])
+with col_reset2:
+    if st.button("🔄 Analizar otra"):
+        st.session_state.reset_ctr += 1
+        st.rerun()
+
+foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}")
 st.caption("¿No aparece el botón para cambiar a la cámara trasera? Usá 'Subí una foto' de "
            "abajo y elegí la opción de cámara de tu celular/tablet — esa sí te deja elegir "
            "cuál cámara usar.")
 if foto is None:
-    foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"])
+    foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"],
+                             key=f"upload_{st.session_state.reset_ctr}")
 
 if foto is not None:
     pil_img = Image.open(foto)
     with st.spinner("Analizando..."):
         phash_nuevo, colorhash_nuevo = foto_a_hashes(pil_img)
-        candidatos = preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, categoria)
+        candidatos = preseleccionar_candidatos(phash_nuevo, colorhash_nuevo)
         client = get_anthropic_client()
         try:
-            reporte = analizar(client, pil_img, categoria, candidatos)
+            reporte = analizar(client, pil_img, candidatos)
         except Exception as e:
             st.error(f"No se pudo generar el reporte: {e}")
             st.stop()
 
     candidatos_por_sku = {c["sku"]: c for c in candidatos}
     vector = reporte["vector_dg"]
+    categoria = reporte.get("categoria_identificada", "")
     cobertura = reporte["indice_cobertura_nueva_dg"]
     reco_key = reporte["recomendacion"]
     texto_reco = RECOMENDACIONES.get(reco_key, reco_key)
@@ -386,6 +446,11 @@ if foto is not None:
         texto_reco += f" ({reporte['sku_a_sustituir']})"
 
     st.image(pil_img, width=220)
+    if categoria:
+        etiqueta_cat = f"Categoría identificada: **{categoria}**"
+        if categoria in DDG.get("categorias_sin_definir_en_ddg", []):
+            etiqueta_cat += " ⚠️ (todavía no tiene valores de referencia en el DDG)"
+        st.caption(etiqueta_cat)
 
     if cobertura >= 60:
         st.success(f"**HUECO — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
@@ -414,6 +479,11 @@ if foto is not None:
                         f"ST: {c.get('sell_through_pct', 0)}% · Costo: {fmt_moneda(c.get('costo'))} · "
                         f"Precio: {fmt_moneda(c.get('precio'))}")
                 st.caption(nota)
+                otros_colores = familia_de_colores(c["sku"], excluir=set(candidatos_por_sku.keys()))
+                if otros_colores:
+                    st.caption(f"🎨 También disponible en {len(otros_colores)} color(es) más: "
+                               + ", ".join(otros_colores[:6])
+                               + (" …" if len(otros_colores) > 6 else ""))
 
     # ---- guardado: recien aca se pide nombre / proveedor / costo ----
     st.markdown("---")

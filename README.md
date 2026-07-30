@@ -1,12 +1,25 @@
-# Radar DG — guía de puesta en marcha (v5)
+# Radar DG — guía de puesta en marcha (v6)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
 programar para seguir estos pasos, solo ir uno por uno.
 
-**Si ya tenías la v4 desplegada:** solo necesitás repetir el Paso 2 (subir
-estos archivos nuevos a GitHub) y sumar el Paso 3-bis (Google Sheets) — no
-hace falta rehacer Anthropic ni Streamlit Cloud.
+**Si ya tenías una versión anterior desplegada:** solo necesitás repetir el
+Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
+Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
+
+**Novedades de v6:**
+- Ya no se elige categoría a mano: sacás la foto y la IA identifica la
+  categoría sola por la silueta, buscando en **todo** el catálogo (antes
+  comparaba solo dentro de la categoría elegida — por eso a veces mostraba
+  matches sin ninguna similitud real).
+- Botón **"🔄 Analizar otra"** para limpiar la foto y arrancar de nuevo, sin
+  importar si la sacaste con la cámara o la subiste como archivo.
+- Comparación más fina en silueta, altura/tacón, suela y punta: si esos
+  puntos no coinciden, ya no se muestra como coincidencia aunque el color se
+  parezca.
+- Cada coincidencia ahora muestra también en qué otros colores existe ese
+  mismo modelo en el catálogo.
 
 Qué hay en la carpeta:
 
@@ -134,16 +147,21 @@ esto uno o dos días antes de viajar, no el mismo día.
 
 ## Durante la feria
 
-- Cada comprador abre el mismo link, elige categoría, escribe proveedor y
-  costo, y saca la foto.
-- En segundos ve: si es un **hueco o es redundante** (bien arriba, en un
-  color), el vector DG en una sola línea, las coincidencias (con foto,
-  inventario, venta, ST, costo y precio de cada una), y la recomendación.
-- Cada foto se guarda **sola, automáticamente**, en la base compartida —
-  no hay que tocar nada para que quede guardada.
-- Si decide comprarla, toca **"Marcar como comprada"** — a partir de ese
-  momento, esa muestra la va a tener en cuenta el radar de **cualquier**
-  comprador que fotografíe algo parecido, en cualquier celular.
+- Cada comprador abre el mismo link y saca (o sube) la foto de la muestra —
+  ya no hace falta elegir categoría antes, la IA la identifica sola.
+- En segundos ve: la categoría identificada, si es un **hueco o es
+  redundante** (bien arriba, en un color), el vector DG en una sola línea,
+  las coincidencias (con foto, inventario, venta, ST, costo, precio y otros
+  colores disponibles de cada una), y la recomendación.
+- Recién ahí, si quiere guardarla, completa nombre/proveedor/costo y toca
+  **"Guardar"** — eso es lo único que queda pendiente después de ver el
+  reporte.
+- Para analizar otra muestra, toca **"🔄 Analizar otra"** — limpia la foto
+  anterior (funciona igual si la sacaste con la cámara o si la subiste como
+  archivo).
+- Si decide comprarla, marca el check **"Ya la compré"** al guardar — a
+  partir de ese momento, esa muestra la va a tener en cuenta el radar de
+  **cualquier** comprador que fotografíe algo parecido, en cualquier celular.
 - Desde la barra lateral, en cualquier momento, **"Descargar base completa
   (CSV)"** baja todo lo analizado hasta ese momento por todo el equipo.
 
@@ -197,9 +215,12 @@ cuando llegue el momento y armamos ese script de "cierre de temporada".
   info en el Excel. Los de "PRESS27" (importación en proceso) no tienen
   foto todavía, así que aparecen como referencia de proveedor/costo pero no
   compiten en la comparación visual.
-- **La preselección de candidatos es por categoría declarada + forma/color**
-  dentro de esa categoría (no contra los ~1,615 registros en cada foto).
-  Confía en que el comprador eligió bien la categoría al sacar la foto.
+- **La preselección de candidatos ahora es contra todo el catálogo** (forma +
+  color, sobre los ~1,615 registros), y la categoría la identifica la IA a
+  partir de la silueta — ya no depende de que el comprador elija bien una
+  categoría de antemano. Si la IA identifica mal una categoría muy atípica o
+  poco fotogénica, todavía puede pedirse una corrección manual en una
+  próxima versión si hiciera falta.
 - Las fotos del catálogo son de estudio (fondo blanco); las de la feria van
   a tener fondo de stand — pedile a los compradores una foto de perfil,
   sobre superficie lisa si es posible.
