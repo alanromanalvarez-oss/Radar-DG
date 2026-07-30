@@ -201,7 +201,11 @@ def compradas_compartidas_como_candidatos(categoria: str):
 
 
 def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, categoria, n=N_CANDIDATOS):
-    pool = [r for r in CATALOGO if r["categoria"] == categoria] + compradas_compartidas_como_candidatos(categoria)
+    # Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia) no
+    # tienen phash/colorhash -- los dejamos afuera de esta comparacion visual
+    # en vez de romper (antes esto tiraba KeyError).
+    pool = [r for r in CATALOGO if r["categoria"] == categoria and r.get("phash") and r.get("colorhash")]
+    pool += compradas_compartidas_como_candidatos(categoria)
     for r in pool:
         r["_dist"] = distancia(phash_nuevo, r["phash"]) + 0.5 * distancia(colorhash_nuevo, r["colorhash"])
     pool.sort(key=lambda r: r["_dist"])
@@ -350,22 +354,16 @@ if not sheets_disponible():
     st.info("La base compartida (Google Sheets) todavía no está conectada — cada análisis "
              "solo queda en este celular por ahora. Ver README para conectarla.")
 
-col_a, col_b = st.columns(2)
-with col_a:
-    categoria = st.selectbox("Categoría", CATEGORIAS)
-with col_b:
-    comprador = st.text_input("Tu nombre (opcional)")
-
-col_c, col_d = st.columns(2)
-with col_c:
-    proveedor = st.text_input("Proveedor")
-with col_d:
-    costo = st.text_input("Costo (USD)")
-
+categoria = st.selectbox("Categoría", CATEGORIAS)
 if categoria in DDG.get("categorias_sin_definir_en_ddg", []):
     st.warning(f"'{categoria}' todavía no tiene valores de referencia en el DDG.")
 
-foto = st.camera_input("Tomá la foto de la muestra") or st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"])
+foto = st.camera_input("Tomá la foto de la muestra")
+st.caption("¿No aparece el botón para cambiar a la cámara trasera? Usá 'Subí una foto' de "
+           "abajo y elegí la opción de cámara de tu celular/tablet — esa sí te deja elegir "
+           "cuál cámara usar.")
+if foto is None:
+    foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"])
 
 if foto is not None:
     pil_img = Image.open(foto)
@@ -417,30 +415,48 @@ if foto is not None:
                         f"Precio: {fmt_moneda(c.get('precio'))}")
                 st.caption(nota)
 
-    # ---- guardado automatico en la base compartida ----
-    fila_id = str(uuid.uuid4())[:8]
-    fila = {
-        "id": fila_id,
-        "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
-        "comprador": comprador,
-        "categoria": categoria,
-        "proveedor": proveedor,
-        "costo": costo,
-        **{d: vector.get(d, "") for d in DIMENSIONES_DDG},
-        "top_sku_similar": redund[0]["sku"] if redund else "",
-        "top_similitud_pct": redund[0]["similitud_pct"] if redund else "",
-        "indice_similitud_dg": reporte["indice_similitud_dg"],
-        "indice_cobertura_nueva_dg": cobertura,
-        "recomendacion": reco_key,
-        "motivo": reporte.get("motivo", ""),
-        "comprada": "",
-        "foto_base64": thumb_b64(pil_img),
-    }
-    id_guardado = guardar_en_sheet(fila)
+    # ---- guardado: recien aca se pide nombre / proveedor / costo ----
+    st.markdown("---")
+    st.markdown("**💾 Guardar en la base compartida**")
+    with st.form(key="guardar_form", clear_on_submit=True):
+        col_a, col_b = st.columns(2)
+        with col_a:
+            comprador = st.text_input("Tu nombre (opcional)")
+        with col_b:
+            proveedor = st.text_input("Proveedor")
+        col_c, col_d = st.columns(2)
+        with col_c:
+            costo = st.text_input("Costo (USD)")
+        with col_d:
+            ya_comprada = st.checkbox("Ya la compré")
+        enviado = st.form_submit_button("Guardar")
 
-    if id_guardado and st.button("✅ Marcar esta muestra como COMPRADA"):
-        marcar_comprada_en_sheet(id_guardado)
-        st.success("Marcada. Ya la van a ver todos los compradores en sus próximas fotos.")
+    if enviado:
+        fila_id = str(uuid.uuid4())[:8]
+        fila = {
+            "id": fila_id,
+            "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
+            "comprador": comprador,
+            "categoria": categoria,
+            "proveedor": proveedor,
+            "costo": costo,
+            **{d: vector.get(d, "") for d in DIMENSIONES_DDG},
+            "top_sku_similar": redund[0]["sku"] if redund else "",
+            "top_similitud_pct": redund[0]["similitud_pct"] if redund else "",
+            "indice_similitud_dg": reporte["indice_similitud_dg"],
+            "indice_cobertura_nueva_dg": cobertura,
+            "recomendacion": reco_key,
+            "motivo": reporte.get("motivo", ""),
+            "comprada": "SI" if ya_comprada else "",
+            "foto_base64": thumb_b64(pil_img),
+        }
+        if guardar_en_sheet(fila):
+            st.success("Guardada en la base compartida." + (
+                " Marcada como comprada — ya la van a tener en cuenta todos los compradores."
+                if ya_comprada else ""))
+        else:
+            st.info("No se pudo guardar en la base compartida (¿está conectado Google Sheets?). "
+                    "El análisis de arriba sigue siendo válido igual.")
 
 
 with st.sidebar:
