@@ -1,17 +1,24 @@
-# Radar DG — guía de puesta en marcha
+# Radar DG — guía de puesta en marcha (v5)
 
-Esta carpeta ya tiene todo lo necesario para publicar Radar DG como un link
-que tus compradores abren desde el celular en la feria. No hace falta saber
+Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
+tus compradores abren desde el celular en SAPICA. No hace falta saber
 programar para seguir estos pasos, solo ir uno por uno.
+
+**Si ya tenías la v4 desplegada:** solo necesitás repetir el Paso 2 (subir
+estos archivos nuevos a GitHub) y sumar el Paso 3-bis (Google Sheets) — no
+hace falta rehacer Anthropic ni Streamlit Cloud.
 
 Qué hay en la carpeta:
 
 | Archivo | Qué es |
 |---|---|
-| `app.py` | La app que ven los compradores (cámara + reporte) |
-| `catalog_index.json` | Los 1,321 SKUs del catálogo ya procesados (fotos, categoría, inventario) |
-| `ddg.json` | El Diccionario de Decisiones Dorothy Gaynor |
-| `index_catalog.py` | Para regenerar `catalog_index.json` cuando cambie el catálogo |
+| `app.py` | La app que ven los compradores (cámara + reporte + base compartida) |
+| `catalog_index.json` | ~1,615 referencias ya procesadas: catálogo vigente + China SS27 + Presapica + PRESS27 |
+| `ddg.json` | El Diccionario de Decisiones Dorothy Gaynor (8 dimensiones activas) |
+| `index_catalog.py` | Para reconstruir `catalog_index.json` desde cero (PDF viejo) si hiciera falta |
+| `enriquecer_con_costos.py` | Suma costo/precio/margen/temporada desde el Excel de Vistas |
+| `sumar_presapica.py` | Suma China SS27 + Presapica + PRESS27 desde Base Presapica.xlsx |
+| `agregar_compras_previas.py` | Para sumar fotos de compras ya hechas, organizadas en carpetas |
 | `requirements.txt` | Lista de librerías que necesita la app |
 
 ---
@@ -19,101 +26,185 @@ Qué hay en la carpeta:
 ## Paso 1 — Conseguir la clave de Anthropic (la IA que analiza las fotos)
 
 1. Andá a **console.anthropic.com** y creá una cuenta (con tu mail de Dorothy Gaynor).
-2. Cargá una tarjeta en "Billing" — se cobra por uso, no es una suscripción.
-   Para este uso (analizar fotos en una feria) el costo es de centavos de
-   dólar por foto, así que unos días de feria cuestan muy poco (unos
-   pocos dólares en total, no cientos).
+2. Cargá una tarjeta en "Billing" — se cobra por uso, centavos de dólar por
+   foto, unos pocos dólares en total para toda la feria.
 3. En el menú de la izquierda, andá a **API Keys** → **Create Key**.
-4. Copiá la clave (empieza con `sk-ant-...`) y guardala en un lugar seguro
-   (un gestor de contraseñas, o una nota privada). **No la compartas ni la
-   subas a ningún lado pública.**
+4. Copiá la clave (empieza con `sk-ant-...`) y guardala en un lugar seguro.
 
 ## Paso 2 — Subir el código a GitHub
 
 1. Creá una cuenta gratis en **github.com** si no tenés una.
-2. Creá un repositorio nuevo (botón "New repository"), por ejemplo
-   `radar-dg`. Dejalo **privado** (no público), ya que adentro va tu catálogo.
-3. Subí todos los archivos de esta carpeta a ese repositorio (podés
-   arrastrarlos directo en la web de GitHub con "Add file" → "Upload files").
+2. Creá un repositorio **privado** (por ejemplo `radar-dg`), ya que adentro
+   va tu catálogo.
+3. Subí todos los archivos de esta carpeta a ese repositorio (con GitHub
+   Desktop: clonar → copiar el contenido de la carpeta adentro → commit → push).
 
 ## Paso 3 — Publicar la app en Streamlit Community Cloud (gratis)
 
 1. Andá a **share.streamlit.io** y entrá con tu cuenta de GitHub.
-2. Botón **"New app"** → elegí el repositorio `radar-dg`, la rama `main`,
-   y como archivo principal `app.py`.
-3. Antes de hacer clic en "Deploy", andá a **"Advanced settings" → "Secrets"**
-   y pegá esto (con tu clave real del Paso 1):
+2. **"Create app" → "Deploy a public app from GitHub"** → elegí el
+   repositorio, rama `main`, archivo principal `app.py`.
+3. Antes de "Deploy", andá a **"Advanced settings" → "Secrets"** y pegá
+   (con tu clave real del Paso 1):
    ```
    ANTHROPIC_API_KEY = "sk-ant-tu-clave-real-aca"
    ```
-4. Deploy. En un par de minutos te da un link público, algo como
-   `https://radar-dg.streamlit.app`. **Ese es el link que le mandás a tus
-   compradores.**
+4. Deploy. Te da un link público (`https://algo.streamlit.app`) — ese es el
+   que le mandás a tus compradores.
 
-Cualquier persona con el link puede abrirlo desde el celular (Chrome o
-Safari), sin instalar nada.
+Tip: convertí ese link en un código QR (buscá "QR code generator" en
+Google) para pegarlo en el stand o mandarlo por WhatsApp.
 
-Tip: pegá ese link en un generador de códigos QR gratis (buscá "QR code
-generator" en Google) e imprimí el QR para pegarlo en la cartelera del
-stand o mandarlo por WhatsApp al grupo de compradores.
+## Paso 3-bis — Conectar la base compartida (Google Sheets) [NUEVO en v5]
+
+Esto es lo que hace que **todas las fotos de todos los compradores** queden
+en un solo lugar, con proveedor y costo, descargable en cualquier momento.
+Son varios pasos pero se hacen una sola vez.
+
+1. **Crear la planilla:** andá a **sheets.google.com**, creá una planilla
+   nueva, llamala por ejemplo "Radar DG - SAPICA". Copiá el link de la
+   barra de direcciones (algo como `https://docs.google.com/spreadsheets/d/ABC123.../edit`).
+
+2. **Crear la cuenta de servicio (el "robot" que va a escribir en la planilla):**
+   - Andá a **console.cloud.google.com** (con tu cuenta de Google) y creá un
+     proyecto nuevo (arriba, "Select a project" → "New Project"), nombralo
+     "radar-dg".
+   - En el buscador de arriba escribí **"Google Sheets API"** → abrila →
+     **"Enable"**.
+   - En el menú lateral: **"APIs & Services" → "Credentials"** →
+     **"+ Create Credentials" → "Service account"**.
+   - Ponele un nombre (ej. "radar-dg-bot") y creala (podés dejar el resto
+     por defecto, "Continue" → "Done").
+   - En la lista de "Service Accounts", hacé clic en la que acabás de crear
+     → pestaña **"Keys"** → **"Add Key" → "Create new key"** → tipo **JSON**
+     → se descarga un archivo `.json` a tu computadora. **Guardalo, lo vas
+     a necesitar en el paso 4.**
+   - Copiá el email de esa cuenta de servicio (se ve arriba, termina en
+     `...iam.gserviceaccount.com`).
+
+3. **Darle acceso a la planilla:** volvé a tu Google Sheet, botón **"Share"**
+   (arriba a la derecha), pegá el email de la cuenta de servicio (el que
+   termina en `iam.gserviceaccount.com`) y dale permiso de **"Editor"**.
+
+4. **Cargar las credenciales en Streamlit:** abrí el archivo `.json` que se
+   descargó (con el Bloc de notas) y vas a ver algo así:
+   ```json
+   {
+     "type": "service_account",
+     "project_id": "radar-dg-xxxxx",
+     "private_key_id": "...",
+     "private_key": "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n",
+     "client_email": "radar-dg-bot@radar-dg-xxxxx.iam.gserviceaccount.com",
+     "client_id": "...",
+     "token_uri": "https://oauth2.googleapis.com/token"
+   }
+   ```
+   Andá a tu app en Streamlit Cloud → **⋮ → Settings → Secrets**, y agregá
+   (además de tu `ANTHROPIC_API_KEY` que ya estaba) esto, reemplazando cada
+   valor por el de tu archivo `.json` real:
+   ```toml
+   GSHEET_URL = "https://docs.google.com/spreadsheets/d/ABC123.../edit"
+
+   [gcp_service_account]
+   type = "service_account"
+   project_id = "radar-dg-xxxxx"
+   private_key_id = "..."
+   private_key = "-----BEGIN PRIVATE KEY-----\n...\n-----END PRIVATE KEY-----\n"
+   client_email = "radar-dg-bot@radar-dg-xxxxx.iam.gserviceaccount.com"
+   client_id = "..."
+   token_uri = "https://oauth2.googleapis.com/token"
+   ```
+   **Importante:** el `private_key` tiene que quedar entre comillas y con
+   los `\n` tal cual vienen en el JSON (no los borres). Guardá — la app se
+   reinicia sola.
+
+5. Probalo: sacá una foto de prueba y fijate que aparezca una fila nueva en
+   tu Google Sheet (hoja "Historial", se crea sola la primera vez).
+
+Si preferís no hacer este paso ahora (por ejemplo, falta poco para viajar),
+la app funciona igual sin él — simplemente cada análisis queda solo en el
+celular de quien lo hizo, como en la v4, y te avisa en pantalla que la base
+compartida no está conectada.
 
 ## Paso 4 — Probarla antes de la feria
 
-Abrí el link vos mismo, elegí una categoría, sacale una foto a un zapato
-cualquiera (incluso uno que ya esté en el catálogo) y confirmá que te
-devuelve el reporte completo. Hacé esto uno o dos días antes de viajar a
-la feria, no el mismo día.
+Abrí el link vos mismo, completá categoría/proveedor/costo, sacale una
+foto a un zapato cualquiera y confirmá que te devuelve el reporte. Hacé
+esto uno o dos días antes de viajar, no el mismo día.
 
-## Paso 5 — Durante la feria
+## Durante la feria
 
-- Cada comprador abre el mismo link en su propio celular.
-- Elige la categoría del producto, saca la foto, y en segundos le llega
-  el reporte de las 6 secciones (vector DG, redundancias con fotos reales,
-  huecos, índices, recomendación).
-- Si confirma la compra, puede tocar "Marcar como comprada" — así, si otro
-  comprador (u otra foto más tarde) se parece a esa misma muestra, el radar
-  ya la va a tener en cuenta, aunque todavía no esté en el catálogo oficial.
-- Al final del día, desde el menú lateral se puede descargar el historial
-  de esa sesión en un archivo JSON (útil para revisar qué se aprobó).
+- Cada comprador abre el mismo link, elige categoría, escribe proveedor y
+  costo, y saca la foto.
+- En segundos ve: si es un **hueco o es redundante** (bien arriba, en un
+  color), el vector DG en una sola línea, las coincidencias (con foto,
+  inventario, venta, ST, costo y precio de cada una), y la recomendación.
+- Cada foto se guarda **sola, automáticamente**, en la base compartida —
+  no hay que tocar nada para que quede guardada.
+- Si decide comprarla, toca **"Marcar como comprada"** — a partir de ese
+  momento, esa muestra la va a tener en cuenta el radar de **cualquier**
+  comprador que fotografíe algo parecido, en cualquier celular.
+- Desde la barra lateral, en cualquier momento, **"Descargar base completa
+  (CSV)"** baja todo lo analizado hasta ese momento por todo el equipo.
 
-**Importante:** cada comprador que abra la app en su propio celular arranca
-con su propia sesión — las muestras que uno marque como "comprada" no las
-ven automáticamente los demás compradores en tiempo real durante la feria
-(cada celular tiene su propia memoria temporal). Si esto es un problema
-para tu equipo (varios compradores viendo lo mismo en simultáneo), avisame
-y lo resolvemos en la siguiente versión con una base compartida.
+## Velocidad — por qué a veces tarda y cómo mejorarla
+
+- **La primera foto del día siempre es más lenta** (30-60 seg): Streamlit
+  gratis "duerme" la app sin uso. Truco: que alguien la abra 5-10 minutos
+  antes de arrancar a fotografiar.
+- El motor ya está ajustado para velocidad: 8 candidatos por consulta (no
+  12), respuestas cortas y concretas, instrucciones del DDG cacheadas, y
+  las notas de inventario/costo/precio se muestran directo del catálogo
+  (no se le piden a la IA, así no hay que esperarlas).
+- Si sigue lento, se puede bajar más `N_CANDIDATOS` en `app.py` — avisame
+  y lo ajustamos viendo tiempos reales.
+
+## Sumar compras ya hechas antes de SAPICA
+
+Si ya compraste muestras (otra feria, proveedor nacional) organizá las
+fotos en carpetas por categoría y corré:
+```
+python agregar_compras_previas.py compras_previas/ catalog_index.json
+```
+Subí el `catalog_index.json` actualizado a GitHub (commit + push).
+
+## Si el catálogo cambia (nuevos Excel de Dorothy Gaynor)
+
+- Nuevo Excel de costos/precios/vistas → `python enriquecer_con_costos.py "Modelos con inventario mayor a 100_URL_VISTAS.xlsx" catalog_index.json`
+- Nuevo Base Presapica (China / Presapica / PRESS27) → `python sumar_presapica.py "Base Presapica.xlsx" catalog_index.json`
+- Subí el `catalog_index.json` resultante a GitHub cada vez.
 
 ## Después de la feria — que el radar "aprenda"
 
-Los JSON descargados durante la feria tienen las muestras aprobadas con su
-Vector DG. Para la próxima temporada, esos productos que se terminen
-comprando de verdad se pueden sumar a `catalog_index.json` corriendo de
-nuevo `index_catalog.py` sobre el catálogo actualizado. Si querés, en la
-siguiente sesión te ayudo a automatizar ese "merge" para que sea un solo
-paso.
+La base compartida de Google Sheets ya tiene, temporada tras temporada,
+todo lo analizado y comprado. Los productos que se terminen confirmando se
+pueden sumar al `catalog_index.json` de la próxima temporada — avisame
+cuando llegue el momento y armamos ese script de "cierre de temporada".
 
 ---
 
 ## Limitaciones que hay que tener presentes (honestas, no letra chica)
 
-- **El DDG que tenemos hoy cubre 7 de 13 categorías** (falta Bota, Botín,
-  Choclo, Mocasín, Ugg, Balerina) **y 7 de las 11 dimensiones** del Vector DG
-  (faltan Comodidad, Construcción, Cliente objetivo, Rol del producto). La
-  app avisa cuando falta info, pero cuanto antes completes el DDG, más
-  confiables van a ser esas categorías.
-- **"Precio percibido"** hoy lo infiere la IA mirando la foto (materiales,
-  herrajes, terminaciones) — no viene de un dato real de costo/precio. Si
-  tenés esa info en otro sistema, convendría cargarla en `catalog_index.json`
-  para que sea exacta en vez de estimada.
+- **El DDG cubre 7 de las ~14 categorías** del catálogo (Bota, Botín,
+  Choclo, Mocasín, Ugg, Balerina, Accesorios todavía sin valores de
+  referencia). La app avisa cuando falta, pero cuanto antes se complete el
+  DDG para esas categorías, más confiable va a ser el análisis ahí.
+- El Vector DG que ve el comprador ahora muestra **solo las 8 dimensiones
+  que están definidas en el DDG** (se sacaron las 4 que no tenían valores,
+  a pedido de Dorothy Gaynor).
+- **Costo y precio ya son datos reales** (vienen del Excel de Dorothy
+  Gaynor), no estimados por la IA — pero solo para los SKUs que traían esa
+  info en el Excel. Los de "PRESS27" (importación en proceso) no tienen
+  foto todavía, así que aparecen como referencia de proveedor/costo pero no
+  compiten en la comparación visual.
 - **La preselección de candidatos es por categoría declarada + forma/color**
-  (no compara contra los 1,321 SKUs en cada foto, sino contra los más
-  parecidos dentro de la misma categoría). Esto es rápido y barato, pero
-  significa que confía en que el comprador eligió bien la categoría al
-  sacar la foto.
+  dentro de esa categoría (no contra los ~1,615 registros en cada foto).
+  Confía en que el comprador eligió bien la categoría al sacar la foto.
 - Las fotos del catálogo son de estudio (fondo blanco); las de la feria van
-  a tener fondo de stand. Pedile a los compradores una foto de perfil, sobre
-  una superficie lisa si es posible — mejora la precisión de la comparación.
-- Este catálogo (`catalog_index.json`) es "modelos con inventario mayor a
-  100" — si Dorothy Gaynor compara también contra carryovers, importación de
-  China u otras bases que no estén en este PDF, hay que sumarlas como una
-  fuente adicional al indexado.
+  a tener fondo de stand — pedile a los compradores una foto de perfil,
+  sobre superficie lisa si es posible.
+- La base compartida en Google Sheets guarda una miniatura chica de cada
+  foto como texto (no como imagen visible directamente en la planilla) —
+  sirve para reprocesar o auditar después, pero si querés fotos "clickeables"
+  dentro de la misma planilla, es un paso extra (subirlas a Google Drive) que
+  podemos sumar después si hace falta.

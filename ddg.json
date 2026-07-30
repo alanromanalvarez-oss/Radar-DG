@@ -49,24 +49,7 @@
     "precio_percibido": {
       "valores_posibles": ["Adecuado", "Premium"],
       "definida_en_ddg": true
-    },
-    "nivel_de_comodidad": {
-      "valores_posibles": [],
-      "definida_en_ddg": false,
-      "_nota": "Falta que Dorothy Gaynor defina la escala (ej. Básico / Medio / Alto) y el criterio para asignarla."
-    },
-    "tipo_de_construccion": {
-      "valores_posibles": [],
-      "definida_en_ddg": false,
-      "_nota": "Parcialmente cubierta por silueta + punta, pero falta una dimensión explícita de materiales/armado."
-    },
-    "cliente_objetivo": {
-      "valores_posibles": [],
-      "definida_en_ddg": false
-    },
-    "rol_del_producto": {
-      "valores_posibles": [],
-      "definida_en_ddg": false
     }
-  }
+  },
+  "_nota_v5": "A pedido de Dorothy Gaynor (cambio v5), el Vector DG que ve el comprador muestra SOLO estas 9 dimensiones (las que estan definidas en el DDG). Se quitaron 'nivel de comodidad', 'tipo de construccion', 'cliente objetivo' y 'rol del producto' porque el DDG no tiene valores de referencia para ellas -- si en el futuro se definen, se agregan aca y reaparecen solas."
 }
