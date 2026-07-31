@@ -1,4 +1,58 @@
-# Radar DG — guía de puesta en marcha (v12)
+# Radar DG — guía de puesta en marcha (v13)
+
+**Novedades de v13 — alineación con el documento de Toño ("RADAR DG — Instrucciones del Proyecto v2"):**
+- **Bug de raíz encontrado y corregido:** `categoria_identificada` era texto
+  libre, y el propio prompt le daba a la IA ejemplos que ni siquiera existen
+  en el catálogo real ("Zapato", "Plataforma", "Accesorio" en singular — el
+  catálogo tiene 14 categorías reales, entre ellas "Accesorios" en plural).
+  Eso dejaba que la IA le pusiera un nombre distinto a la misma categoría en
+  corridas distintas, lo cual es una fuente real de inconsistencia. Ahora
+  está forzada por schema (`enum`) a elegir siempre una de las 14 categorías
+  reales del catálogo (Sandalia, Zapatilla, Tenis, Flat, Confort, Fiesta,
+  Botín, Bota, Choclo, Mocasín, Ugg, Balerina, Alpargata, Accesorios).
+- **Se reforzó explícitamente la regla que faltaba para el caso del taco
+  (SKU D06001765501, la falla que reportaste):** el prompt separaba mal
+  "silueta" (la dimensión Cerrada/Destalonado/Abierta) de "categoría" — los
+  mezclaba en un solo punto ("silueta general: bota/botín/choclo/..."), y
+  nunca decía explícitamente que un zapato Cerrado y un Destalonado
+  (slingback/mule) son SIEMPRE decisiones de compra distintas. Ahora son 4
+  filtros duros explícitos e independientes (categoría, silueta, altura/tacón,
+  suela/punta) y la regla de silueta da el ejemplo exacto del caso que
+  reportaste.
+- Se agregaron criterios de identificación explícitos en el DDG para cada
+  categoría y cada dimensión (antes solo había listas de valores sin
+  explicación de cómo distinguirlos en una foto) — tomados del documento
+  que compartiste de tu trabajo con el ingeniero Toño.
+- Se emparejó el nombre exacto de dos valores para que ambos sistemas usen
+  el mismo vocabulario: "Relajado" → "Relajado-Casual", "Negros" → "Negros
+  oscuros" (con la regla de clasificar por familia de color, no por tono
+  exacto).
+- Se renombraron los resultados para usar el mismo vocabulario que el
+  documento de Toño: "HUECO" → "HUECO REAL", "PARCIAL" → "HUECO PARCIAL",
+  "REDUNDANTE" → "DUPLICADO".
+- Cada coincidencia ahora muestra de dónde sale (Catálogo activo / Comprado
+  para PV China / Presapica / Ya comprada en esta feria) en vez de un código
+  interno.
+- **Pendiente, necesita tu confirmación:** el documento de Toño define
+  "silueta" con solo 3 valores (Cerrada/Destalonado/Abierta) para todas las
+  categorías. Este DDG tiene 4 valores extra (Caña corta/media/alta, Sobre
+  la rodilla) que vos pediste agregar específicamente para Bota en una
+  versión anterior. No los saqué porque fue un pedido tuyo explícito, pero
+  quedó una nota en `ddg.json` señalando el conflicto — avisame si querés
+  que le agreguemos esos 4 valores también al sistema de Toño, o que los
+  saquemos de acá para que los dos usen la misma silueta de 3 valores.
+- **Importante:** este cambio corrige la lógica de comparación (el "cerebro"
+  del análisis), no la parte de comparación por imagen (el "ojo"). El caso
+  del taco que reportaste tenía DOS problemas separados: (1) la comparación
+  visual no encontraba bien los candidatos correctos cuando el producto es
+  chico en el cuadro con fondo de varias superficies — sigue siendo una
+  limitación conocida, sin resolver, documentada abajo — y (2) aunque
+  apareciera un candidato correcto, el prompt no tenía una regla explícita
+  que impidiera comparar un cerrado con un destalonado. Esta versión
+  soluciona (2). No pude probar (2) con una llamada real a la API en este
+  entorno (no tengo tu clave), así que recomiendo que pruebes vos mismo el
+  caso del taco apenas lo subas, especialmente si aparece un destalonado
+  entre las coincidencias de un zapato cerrado.
 
 **Novedades de v12:**
 - Se quitaron todas las leyendas/tips de la interfaz (a pedido de Alan) — la

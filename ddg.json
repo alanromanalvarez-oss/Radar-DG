@@ -1,18 +1,39 @@
 {
   "_instrucciones": "Este archivo es el DDG (Diccionario de Decisiones Dorothy Gaynor). Edita las listas de 'valores_posibles' para agregar categorías o valores nuevos. La app se los manda a la IA como referencia obligatoria en cada análisis -- no la IA no debe inventar valores fuera de estas listas salvo que marques 'permitir_nuevos': true en una dimensión.",
 
+  "_alineacion_v2_con_ingeniero_toño": "v13: se alineó este DDG con el documento 'RADAR DG -- Instrucciones del Proyecto (v2)' que Alan trabajó con el ingeniero Toño en un proyecto de Claude separado. Se agregaron criterios de identificación explícitos por dimensión y por categoría (antes solo había listas de valores, sin guía de cómo distinguirlos en una foto), y se emparejó el nombre exacto de algunos valores ('Relajado' -> 'Relajado-Casual', 'Negros' -> 'Negros oscuros') para que los dos sistemas usen el mismo vocabulario. PENDIENTE DE CONFIRMAR CON ALAN: el documento de Toño define 'silueta' con solo 3 valores (Cerrada/Destalonado/Abierta) para TODAS las categorías. Este DDG tiene 4 valores extra (Caña corta/media/alta, Sobre la rodilla) agregados especificamente para Bota a pedido explicito de Alan en una version anterior -- no se borraron porque fue un pedido directo, pero si el sistema de Toño no los tiene, los dos radares pueden clasificar una bota distinto. Hay que decidir: (a) agregarle esos 4 valores tambien al sistema de Toño, o (b) sacarlos de aca para que ambos usen la misma silueta de 3 valores.",
+
   "categorias_cubiertas": [
     "Fiesta", "Sandalia", "Alpargata", "Zapatilla", "Flat", "Confort", "Tenis", "Bota"
   ],
   "categorias_sin_definir_en_ddg": [
-    "Botín", "Choclo", "Mocasín", "Ugg", "Balerina"
+    "Botín", "Choclo", "Mocasín", "Ugg", "Balerina", "Accesorios"
   ],
-  "_nota_categorias": "Estas 5 categorías existen en el catálogo (con inventario real) pero el DDG todavía no les asignó ocasión/altura/silueta/etc. de referencia. La IA las analizará igual, pero marcará explícitamente que faltan en el DDG. 'Bota' se sumó en esta version (ver silueta.valores_posibles_extra_bota).",
+  "_nota_categorias": "Estas categorías existen en el catálogo (con inventario real) pero el DDG todavía no les asignó ocasión/altura/silueta/etc. de referencia. La IA las analizará igual, pero marcará explícitamente que faltan en el DDG. 'Bota' se sumó en v6 (ver silueta.valores_posibles_extra_bota). 'Accesorios' se agregó en v13 -- existía en el catálogo real (3 SKUs) pero no estaba listada en ningún lado del DDG, lo que podía llevar a la IA a inventarle un nombre de categoría distinto cada vez que aparecía.",
+
+  "categorias_criterios_de_identificacion": {
+    "_nota": "Vector 1 del reporte (categoria_identificada). Guía corta para reconocer cada categoría por la silueta en la foto -- la IA debe elegir SIEMPRE una de estas, nunca inventar un nombre nuevo ni una variante de ortografía distinta.",
+    "Sandalia": "Cubierta parcial, con tiras o correas que dejan ver buena parte del pie (empeine y/o talón expuestos).",
+    "Zapatilla": "Calzado urbano casual bajo, tipo sneaker de moda/streetwear pero no deportivo técnico.",
+    "Tenis": "Calzado deportivo técnico (running/training), suela gruesa con diseño deportivo marcado.",
+    "Flat": "Zapato cerrado plano, sin tacón, corte bajo tipo mocasín/bailarina simple.",
+    "Confort": "Cerrado, plano o con tacón muy bajo, pensado para uso prolongado/diario, sin elementos de moda marcados.",
+    "Fiesta": "Cerrado o con tiras finas, con tacón medio/alto, materiales o brillo pensados para uso formal/noche.",
+    "Botín": "Cubre el tobillo, corte corto (por debajo del tobillo o justo hasta el hueso).",
+    "Bota": "Cubre desde el tobillo hacia arriba (caña corta, media, alta o sobre la rodilla) -- ver dimensión silueta para la subdivisión por altura de caña.",
+    "Choclo": "Zapato cerrado de corte bajo, generalmente informal, tipo mocasín grueso o casual de cuero.",
+    "Mocasín": "Cerrado, sin cordones, corte bajo, entrada por el empeine (tipo loafer).",
+    "Ugg": "Bota de corte medio/alto en material tipo borrego o gamuza gruesa, look invernal informal.",
+    "Balerina": "Plano, cerrado o semi-cerrado, corte bajo y redondeado, muy simple.",
+    "Alpargata": "Suela de esparto/yute o símil, corte informal de verano.",
+    "Accesorios": "No es calzado (carteras, cinturones u otros complementos) -- no tiene vector_dg de calzado aplicable; marcalo igual como categoria_identificada y decilo explicitamente en huecos/motivo."
+  },
 
   "dimensiones": {
     "ocasion_de_uso": {
-      "valores_posibles": ["Formal", "Diario", "Fiesta", "Relajado"],
-      "definida_en_ddg": true
+      "valores_posibles": ["Formal", "Diario", "Fiesta", "Relajado-Casual"],
+      "definida_en_ddg": true,
+      "_nota": "Formal = oficina/eventos serios. Diario = uso cotidiano general. Fiesta = noche/eventos sociales. Relajado-Casual = fin de semana, uso informal relajado."
     },
     "altura": {
       "valores_posibles": ["Plano", "Tacón bajo", "Tacón medio", "Tacón alto", "Plataforma"],
@@ -24,7 +45,7 @@
         "Tacón medio": "con_tacon",
         "Tacón alto": "con_tacon"
       },
-      "_nota": "grupo_estructural se usa como filtro duro: dos productos de distinto grupo casi nunca resuelven la misma decisión de compra, sin importar que compartan color/ocasión/estilo."
+      "_nota": "grupo_estructural se usa como filtro duro: dos productos de distinto grupo casi nunca resuelven la misma decisión de compra, sin importar que compartan color/ocasión/estilo. Referencia aproximada de altura: Tacón bajo = 1-2cm, Tacón medio = hasta 4cm, Tacón alto = 8cm o más."
     },
     "silueta": {
       "valores_posibles": ["Cerrada", "Destalonado", "Abierta", "Caña corta", "Caña media", "Caña alta", "Sobre la rodilla"],
@@ -34,19 +55,27 @@
         "Caña corta": "bota_caña_corta", "Caña media": "bota_caña_media",
         "Caña alta": "bota_caña_alta", "Sobre la rodilla": "bota_sobre_rodilla"
       },
-      "_nota": "Las ultimas 4 opciones ('Caña corta/media/alta', 'Sobre la rodilla') se agregaron para Bota (a pedido de Dorothy Gaynor): 'Cerrada/Destalonado/Abierta' estaban pensadas para zapato bajo y no distinguian un tipo de bota de otro. grupo_estructural es filtro duro: dos botas de distinta altura de caña no resuelven la misma decision de compra aunque compartan color."
+      "definiciones": {
+        "Cerrada": "El talón queda completamente cubierto por el material del calzado (no hay piel del talón expuesta ni tira que lo sostenga por atrás).",
+        "Destalonado": "El talón queda descubierto o sostenido solo por una tira/correa fina (mule, slingback, zueco). Estructuralmente NUNCA es lo mismo que un cerrado, aunque el resto del zapato (punta, tacón, color) sea idéntico.",
+        "Abierta": "Sandalia con tiras/correas que dejan ver buena parte del pie, tanto empeine como talón."
+      },
+      "_nota": "grupo_estructural es filtro duro, y es INDEPENDIENTE del filtro de categoria_identificada: dos muestras de distinto grupo_estructural en silueta casi nunca resuelven la misma decisión de compra, sin importar que compartan categoría, color, tacón o punta. Ejemplo real: un zapato Cerrado de tacón alto NO es sustituto de un Destalonado (slingback/mule) de tacón alto, aunque el color y la altura de tacón coincidan -- son grupo_estructural distinto ('cerrada' vs 'destalonado'). Las 4 opciones de bota ('Caña corta/media/alta', 'Sobre la rodilla') se agregaron para Bota (a pedido de Dorothy Gaynor): 'Cerrada/Destalonado/Abierta' estaban pensadas para zapato bajo y no distinguían un tipo de bota de otro. Dos botas de distinta altura de caña tampoco resuelven la misma decisión de compra aunque compartan color."
     },
     "punta": {
       "valores_posibles": ["Redonda", "Cuadrada", "Puntal", "Abierta"],
-      "definida_en_ddg": true
+      "definida_en_ddg": true,
+      "_nota": "Puntal = punta puntiaguda/en punta. Abierta = deja ver los dedos (no confundir con la dimensión 'silueta: Abierta', que se refiere al calzado completo, no solo a la punta)."
     },
     "estilo_visual": {
       "valores_posibles": ["Clásico", "Moda", "Tendencia"],
-      "definida_en_ddg": true
+      "definida_en_ddg": true,
+      "_nota": "Clásico = diseño atemporal, poco detalle. Moda = sigue una estética actual pero ya establecida. Tendencia = detalle o silueta muy actual/llamativa, de temporada."
     },
     "color": {
-      "valores_posibles": ["Negros", "Neutros", "Blancos", "Metálicos", "Colores vivos", "Pasteles"],
-      "definida_en_ddg": true
+      "valores_posibles": ["Negros oscuros", "Neutros", "Blancos", "Metálicos", "Colores vivos", "Pasteles"],
+      "definida_en_ddg": true,
+      "_nota": "Clasificar por FAMILIA de color, no por el nombre exacto del tono: un negro azabache y un gris muy oscuro casi negro van los dos en 'Negros oscuros'; un beige, tostado, camel o vino oscuro van en 'Neutros'. Lo que importa para la decisión de compra es la familia, no el nombre comercial del color."
     },
     "tipo_de_outfit": {
       "valores_posibles": ["Jeans", "Vestido", "Pantalón", "Falda", "Fiesta"],
@@ -54,8 +83,9 @@
     },
     "precio_percibido": {
       "valores_posibles": ["Adecuado", "Premium"],
-      "definida_en_ddg": true
+      "definida_en_ddg": true,
+      "_nota": "Inferir por calidad aparente de material, herrajes/hebillas, acabado y nivel de detalle de construcción visible en la foto -- no por el precio real del catálogo (ese dato no lo ve la IA al mirar la foto nueva)."
     }
   },
-  "_nota_v5": "A pedido de Dorothy Gaynor (cambio v5), el Vector DG que ve el comprador muestra SOLO estas 9 dimensiones (las que estan definidas en el DDG). Se quitaron 'nivel de comodidad', 'tipo de construccion', 'cliente objetivo' y 'rol del producto' porque el DDG no tiene valores de referencia para ellas -- si en el futuro se definen, se agregan aca y reaparecen solas."
+  "_nota_v5": "A pedido de Dorothy Gaynor (cambio v5), el Vector DG que ve el comprador muestra SOLO estas 8 dimensiones (las que estan definidas en el DDG). Se quitaron 'nivel de comodidad', 'tipo de construccion', 'cliente objetivo' y 'rol del producto' porque el DDG no tiene valores de referencia para ellas -- si en el futuro se definen, se agregan aca y reaparecen solas."
 }

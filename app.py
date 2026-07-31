@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v6
+Radar DG - app para compradores en feria (ej. SAPICA) -- v13
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -104,6 +104,27 @@ def get_anthropic_client():
 CATALOGO = cargar_catalogo()
 DDG = cargar_ddg()
 DIMENSIONES_DDG = list(DDG.get("dimensiones", {}).keys())
+
+# Lista cerrada de categorias validas (v13): antes categoria_identificada era
+# texto libre y el prompt daba ejemplos que ni siquiera existian en el
+# catalogo real ("Zapato", "Plataforma", "Accesorio") -- eso dejaba que la IA
+# le pusiera un nombre distinto a la misma categoria en corridas distintas,
+# lo cual es una fuente real de inconsistencia. Ahora se fuerza a elegir
+# siempre uno de estos nombres exactos (los mismos que usa el catalogo).
+CATEGORIAS_VALIDAS = sorted(set(
+    DDG.get("categorias_cubiertas", []) + DDG.get("categorias_sin_definir_en_ddg", [])
+))
+
+# Etiquetas legibles para el origen de cada candidato (alineado con las 3
+# fuentes que distingue el documento de Toño: catalogo activo / comprado
+# para la temporada / visto en la feria). Si un candidato no tiene "fuente"
+# seteada es porque viene del catalogo activo (index_catalog.py).
+FUENTES_LABELS = {
+    "china_ss27": "Comprado para PV (China SS27)",
+    "presapica": "Visto/preseleccionado en Presapica",
+    "press27_sin_foto": "Comprado para PV (sin foto todavia)",
+    "aprobada_en_feria": "Ya comprada por el equipo en esta feria",
+}
 
 
 # ------------------------------------------------------------------
@@ -379,10 +400,13 @@ def construir_reporte_tool():
             "properties": {
                 "categoria_identificada": {
                     "type": "string",
+                    "enum": CATEGORIAS_VALIDAS,
                     "description": "La categoria de calzado que identificas en la foto (vos la determinas, "
-                                    "el comprador NO la eligio de antemano). Usa un nombre corto y consistente "
-                                    "(ej. 'Bota', 'Botín', 'Sandalia', 'Zapato', 'Mocasín', 'Tenis', 'Choclo', "
-                                    "'Ugg', 'Balerina', 'Plataforma', 'Accesorio').",
+                                    "el comprador NO la eligio de antemano). Elegi EXACTAMENTE una de la "
+                                    "lista cerrada (ver categorias_criterios_de_identificacion del DDG mas "
+                                    "abajo para como distinguirlas) -- nunca inventes un nombre nuevo ni una "
+                                    "variante de ortografia distinta, aunque la muestra sea ambigua (elegi la "
+                                    "mas cercana y aclaralo en huecos/motivo).",
                 },
                 "vector_dg": {
                     "type": "object",
@@ -439,27 +463,43 @@ DDG:
 
 El comprador NO elige categoria de antemano: vos tenes que identificar la
 categoria del calzado fotografiado a partir de la silueta (campo
-categoria_identificada). La preseleccion de candidatos que se te muestra a
-continuacion se hizo buscando en TODO el catalogo (no esta filtrada por
-categoria), asi que vas a ver candidatos de categorias distintas mezclados --
-es tu trabajo descartar los que no compiten realmente por la misma decision de
-compra, sin importar que hayan quedado preseleccionados por parecido superficial
-de color o textura.
+categoria_identificada, Vector 1 -- elegi SIEMPRE una de la lista cerrada del
+DDG, nunca inventes un nombre nuevo). La preseleccion de candidatos que se te
+muestra a continuacion se hizo buscando en TODO el catalogo (no esta filtrada
+por categoria), asi que vas a ver candidatos de categorias distintas
+mezclados -- es tu trabajo descartar los que no compiten realmente por la
+misma decision de compra, sin importar que hayan quedado preseleccionados por
+parecido superficial de color o textura.
 
 REGLA DURA DE PRECISION ESTRUCTURAL (la mas importante de todas): dos muestras
 NUNCA pueden considerarse similares o redundantes si difieren en estructura,
-aunque compartan color, textura o material. Compara con atencion, en este orden
-de importancia:
-1. Silueta general (bota / botin / choclo / sandalia / plataforma / balerina / etc.)
-2. Altura de caña / tacon (plano, con plataforma, tacon bajo/medio/alto, caña alta/baja)
-3. Tipo de suela (plana, plataforma, con cuña, deportiva, etc.)
-4. Forma de la punta (redonda, cuadrada, puntiaguda, abierta)
+aunque compartan color, textura o material. Hay CUATRO filtros duros
+INDEPENDIENTES entre si (no es que uno sea "mas estructura" que el otro -- una
+muestra puede fallar cualquiera de los cuatro por separado y ya alcanza para
+descartarla como redundancia real):
+1. Categoria (categoria_identificada): bota / botin / choclo / sandalia /
+   confort / etc. -- ver categorias_criterios_de_identificacion del DDG.
+2. Silueta (dimension "silueta" del DDG -- Cerrada / Destalonado / Abierta,
+   mas las 4 variantes de caña para Bota): esto es el corte de talon del
+   calzado, NO la categoria. Un Cerrado (talon totalmente cubierto) y un
+   Destalonado (mule/slingback, talon descubierto o solo con tira fina) son
+   SIEMPRE grupo_estructural distinto, sin excepcion -- aunque compartan
+   categoria, tacon, punta y color identicos. Ejemplo real que la app fallo
+   antes de esta regla: un zapato Cerrado de tacon alto se marco como
+   redundante contra un slingback de tacon alto solo porque el color y la
+   forma general se parecian -- eso es un error, nunca deberia pasar.
+3. Altura / tacon (dimension "altura" del DDG): plano, tacon bajo/medio/alto,
+   plataforma.
+4. Tipo de suela y forma de la punta (dimension "punta" del DDG): plana,
+   plataforma, con cuña, deportiva, redonda, cuadrada, puntiaguda, abierta.
 Si una muestra difiere claramente de un candidato en CUALQUIERA de estos 4
-puntos (ej. un zapato de piso "Confort" vs una bota con caña alta, o una punta
-cuadrada vs una punta puntiaguda), ese candidato NO es una redundancia real, sin
-importar cuanto se parezca el color o el patron -- baja la similitud_pct
-drasticamente (por debajo de {UMBRAL_REDUNDANCIA}) o no lo incluyas. El color y
-la textura son el ULTIMO criterio de desempate, nunca el primero.
+filtros (ej. un zapato de piso "Confort" vs una bota con caña alta, un Cerrado
+vs un Destalonado, o una punta cuadrada vs una puntiaguda), ese candidato NO es
+una redundancia real, sin importar cuanto se parezca el color o el patron --
+baja la similitud_pct drasticamente (por debajo de {UMBRAL_REDUNDANCIA}) o no
+lo incluyas. El color y la textura son el ULTIMO criterio de desempate, nunca
+el primero, y nunca alcanzan para compensar una falla en alguno de los 4
+filtros duros de arriba.
 
 Algunos candidatos vienen etiquetados "MISMO MODELO en otro color que el SKU
 X": eso significa que el catalogo confirma que es el mismo molde/silueta que
@@ -504,8 +544,8 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
     ]
     for c in candidatos:
         etiqueta = f"SKU {c['sku']} | {c['categoria']}"
-        if c.get("fuente"):
-            etiqueta += f" | fuente: {c['fuente']}"
+        fuente_legible = FUENTES_LABELS.get(c.get("fuente"), "Catálogo activo")
+        etiqueta += f" | fuente: {fuente_legible}"
         if c.get("familia_color_de"):
             etiqueta += (f" | MISMO MODELO en otro color que el SKU {c['familia_color_de']} "
                          "(mismo molde/silueta confirmado por catalogo, no por parecido visual)")
@@ -615,11 +655,11 @@ if foto is not None:
         st.caption(etiqueta_cat)
 
     if cobertura >= 60:
-        st.success(f"**HUECO — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
+        st.success(f"**HUECO REAL — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
     elif cobertura >= 35:
-        st.warning(f"**PARCIAL — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
+        st.warning(f"**HUECO PARCIAL — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
     else:
-        st.error(f"**REDUNDANTE — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
+        st.error(f"**DUPLICADO — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")
     st.caption(f"{reporte.get('motivo','')} · {reporte.get('huecos','')}")
 
     # Vector DG en una sola linea, para leer rapido
@@ -637,9 +677,10 @@ if foto is not None:
         with cols[1]:
             st.markdown(f"**{r['sku']}** — {r['similitud_pct']}% · {r['diferencia_clave']}")
             if c:
-                nota = (f"Inv: {c.get('inventario', 0)} · Venta: {c.get('ventas', 0)} · "
-                        f"ST: {c.get('sell_through_pct', 0)}% · Costo: {fmt_moneda(c.get('costo'))} · "
-                        f"Precio: {fmt_moneda(c.get('precio'))}")
+                fuente_legible = FUENTES_LABELS.get(c.get("fuente"), "Catálogo activo")
+                nota = (f"Fuente: {fuente_legible} · Inv: {c.get('inventario', 0)} · "
+                        f"Venta: {c.get('ventas', 0)} · ST: {c.get('sell_through_pct', 0)}% · "
+                        f"Costo: {fmt_moneda(c.get('costo'))} · Precio: {fmt_moneda(c.get('precio'))}")
                 st.caption(nota)
                 otros_colores = familia_de_colores(c["sku"], excluir=set(candidatos_por_sku.keys()))
                 if otros_colores:
