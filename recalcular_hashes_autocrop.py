@@ -1,26 +1,26 @@
 """
 Radar DG - recalcular phash/colorhash de todo el catalogo con auto-recorte
 ==============================================================================
-Por que hace falta: se detectaron dos causas reales de que un zapato que SI
-esta en el catalogo no aparezca como coincidencia:
+Por que hace falta: se detecto un caso real (SKU D17240011620) donde el
+zapato SI estaba en el catalogo, la foto nueva no estaba rotada ni nada raro,
+y aun asi no aparecia como coincidencia. La causa: la foto nueva tenia mas
+margen de fondo alrededor del zapato que la miniatura del catalogo (el
+zapato se veia mas chico dentro del cuadro) -- el hash perceptual compara la
+imagen completa, y ese "zoom" distinto alcanzaba para desviar bastante la
+comparacion aunque el zapato fuera identico.
 
-1. La foto nueva puede tener mas margen de fondo alrededor del zapato que la
-   miniatura del catalogo (se ve "mas chico" dentro del cuadro) -- el hash
-   perceptual compara la imagen completa, asi que ese "zoom" distinto
-   desvia la comparacion aunque el zapato sea identico (caso real: SKU
-   D17240011620, quedaba en el puesto 161 de 1527 en vez del puesto 1).
+Este script recorta cada miniatura del catalogo a su contenido real (sin el
+margen de fondo, estimando el color de fondo desde los bordes -- no asume
+que sea blanco) antes de recalcular su phash/colorhash, para que quede en
+pie de igualdad con como se procesa la foto nueva en la app (ver
+auto_crop_contenido() en app.py, que usa EXACTAMENTE la misma logica).
 
-2. La primera version de este recorte asumia fondo BLANCO (umbral fijo).
-   En una foto de feria con fondo de mesa/mostrador (no blanco), ese recorte
-   no recortaba nada -- lo cual explicaba resultados inconsistentes entre
-   varias fotos del mismo zapato con distinto fondo. Ahora se estima el
-   color de fondo a partir de los bordes de la foto (en vez de asumir
-   blanco), asi que funciona con cualquier fondo razonablemente parejo.
-
-Este script recorta cada miniatura del catalogo a su contenido real antes de
-recalcular su phash/colorhash, para que quede en pie de igualdad con como se
-procesa la foto nueva en la app (ver auto_crop_contenido() en app.py, que usa
-EXACTAMENTE la misma logica).
+Nota: se probo tambien segmentar con GrabCut (mas sofisticado, no depende de
+ningun supuesto sobre el color de fondo) pero al validarlo contra el caso
+real de arriba resulto MENOS preciso (el recuadro final queda con
+proporciones distintas entre fotos que deberian dar igual), asi que se
+descarto. Este metodo (estimar el color de fondo desde los bordes) es el que
+esta probado y en uso.
 
 No hace falta internet -- usa el thumb_b64 que cada entrada ya tiene
 guardado, no vuelve a descargar ni re-leer el PDF/Excel original.
@@ -54,11 +54,12 @@ def auto_crop_contenido(im: Image.Image, margen_pct=0.04, umbral_dist=28, franja
     ys, xs = np.where(contenido)
     if len(xs) == 0:
         return im.convert("RGB")
-    mx, my = int(w * margen_pct), int(h * margen_pct)
+    w2, h2 = im.size
+    mx, my = int(w2 * margen_pct), int(h2 * margen_pct)
     x0 = max(0, xs.min() - mx)
     y0 = max(0, ys.min() - my)
-    x1 = min(w, xs.max() + mx)
-    y1 = min(h, ys.max() + my)
+    x1 = min(w2, xs.max() + mx)
+    y1 = min(h2, ys.max() + my)
     return im.convert("RGB").crop((x0, y0, x1, y1))
 
 

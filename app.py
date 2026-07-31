@@ -184,22 +184,24 @@ def auto_crop_contenido(im: Image.Image, margen_pct=0.04, umbral_dist=28, franja
     """Recorta la imagen a la zona donde hay 'producto' (descarta el margen
     de fondo alrededor) -- SIN asumir que el fondo es blanco.
 
-    Por que: se detecto un segundo caso real (SKU D17240011620, foto subida
-    por Alan) donde el zapato SI estaba en el catalogo y la foto nueva NO
-    estaba rotada, pero seguia sin aparecer como coincidencia (quedaba en el
-    puesto #161 de 1527). La causa: la foto nueva tenia mucho mas margen
-    blanco alrededor del zapato que la foto del catalogo -- el hash
-    perceptual compara la imagen completa, asi que ese 'zoom' distinto
-    desviaba la comparacion aunque el zapato fuera identico.
+    Por que: se detecto un caso real (SKU D17240011620) donde el zapato SI
+    estaba en el catalogo y la foto nueva no estaba rotada, pero seguia sin
+    aparecer como coincidencia (quedaba en el puesto 161 de 1527). La causa:
+    la foto nueva tenia mucho mas margen de fondo alrededor del zapato que la
+    foto del catalogo -- el hash perceptual compara la imagen completa, asi
+    que ese "zoom" distinto desviaba la comparacion aunque el zapato fuera
+    identico. Recortando ambas fotos a su contenido real antes de hashear, la
+    distancia bajo de 124 a 40 y el SKU correcto volvio al puesto #1.
 
-    La primera version de este recorte asumia fondo blanco (umbral fijo).
-    Se detecto que eso fallaba en fotos de feria con fondo de mesa/mostrador
-    (no blanco): el recorte no recortaba nada, y las fotos de un mismo
-    zapato con distinto fondo daban resultados inconsistentes. Ahora se
-    estima el color de fondo a partir de una franja fina en los bordes de
-    la foto (ahi casi siempre hay fondo, no producto) y se recorta segun que
-    tan lejos esta cada pixel de ESE color -- funciona con cualquier color
-    de fondo, no solo blanco."""
+    Nota tecnica: se probo tambien segmentar con GrabCut (separa el producto
+    del fondo con un algoritmo mas sofisticado, sin asumir ningun color de
+    fondo) esperando que fuera mas robusto todavia -- pero al validarlo contra
+    el caso real de arriba, resulto MENOS preciso (cambia el recuadro/proporcion
+    del recorte de forma un poco distinta cada vez, lo cual descalibra la
+    comparacion) -- asi que se descarto y se mantuvo este metodo, mas simple
+    y mas estable en los casos probados. Sigue siendo un metodo aproximado:
+    fondos con varias zonas de color muy distintas (ej. mesa de madera y una
+    pared de vidrio en el mismo cuadro) pueden seguir sin recortarse bien."""
     arr = np.array(im.convert("RGB")).astype(np.int16)
     h, w = arr.shape[:2]
     fb = max(2, int(min(h, w) * franja_borde_pct))
@@ -561,14 +563,10 @@ st.markdown(
     "🧭 RADAR DG</p>",
     unsafe_allow_html=True,
 )
-st.caption("Foto → ¿tengo algo así o es un hueco? Rápido y concreto.")
 
 if not sheets_disponible():
     st.info("La base compartida (Google Sheets) todavía no está conectada — cada análisis "
              "solo queda en este celular por ahora. Ver README para conectarla.")
-
-st.caption("📸 Para que el radar compare mejor: fondo liso (mesa, piso, una hoja "
-           "blanca), buena luz, zapato de perfil ocupando la mayor parte del cuadro.")
 
 if "reset_ctr" not in st.session_state:
     st.session_state.reset_ctr = 0
@@ -581,9 +579,6 @@ with col_reset2:
 
 foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}",
                         resolution="1080p")
-st.caption("💡 ¿Te tenés que alejar mucho para que entre el zapato completo? Usá "
-           "'Subí una foto' de abajo: abre la cámara normal del celular, con zoom y "
-           "encuadre libres — después la elegís de tu galería.")
 if foto is None:
     foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"],
                              key=f"upload_{st.session_state.reset_ctr}")

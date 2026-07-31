@@ -1,4 +1,23 @@
-# Radar DG — guía de puesta en marcha (v11)
+# Radar DG — guía de puesta en marcha (v12)
+
+**Novedades de v12:**
+- Se quitaron todas las leyendas/tips de la interfaz (a pedido de Alan) — la
+  app queda con lo mínimo: foto, resultado, guardar.
+- Se probó un método más sofisticado de recorte de fondo (segmentación tipo
+  "recorte inteligente") específicamente para casos difíciles (producto chico
+  dentro del cuadro, fondo con varias superficies). Al validarlo contra un
+  caso ya resuelto, resultó **menos** preciso que el método anterior — se
+  descartó y se mantiene el método probado (v11).
+- **Limitación conocida, sin resolver todavía:** cuando el producto ocupa una
+  porción chica de la foto (mucho fondo alrededor — mesa, pared, etc.), la
+  comparación por imagen puede fallar o traer resultados menos precisos. Es
+  el caso más difícil para este método liviano de comparación. La forma más
+  confiable de evitarlo, sin necesidad de ningún aviso en pantalla, es que la
+  foto tenga el zapato ocupando la mayor parte del cuadro — eso no depende de
+  la app, así que queda como una recomendación para vos, no un mensaje en la
+  interfaz.
+
+
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
