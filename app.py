@@ -172,9 +172,42 @@ def marcar_comprada_en_sheet(fila_id: str):
 # ------------------------------------------------------------------
 # Utilidades de similitud rapida (preseleccion antes de llamar a la IA)
 # ------------------------------------------------------------------
+ANGULOS_ROTACION = (-15, -10, -5, 0, 5, 10, 15)  # ver foto_a_hashes_multi
+
+
 def foto_a_hashes(pil_img: Image.Image):
     im = pil_img.convert("RGB")
     return str(imagehash.phash(im, hash_size=16)), str(imagehash.colorhash(im, binbits=3))
+
+
+def foto_a_hashes_multi(pil_img: Image.Image, angulos=ANGULOS_ROTACION):
+    """Calcula el hash de la foto nueva en varios angulos de rotacion leve.
+
+    Por que: las fotos del catalogo son de estudio, perfectamente derechas.
+    Las que saca un comprador en la feria casi nunca lo estan -- un
+    telefono en mano, un poco inclinado, es la norma. Se verifico con un
+    caso real (el mismo SKU exacto, pero con la foto rotada ~15 grados y
+    recortada de forma realista): comparando con un solo angulo, el SKU
+    correcto caia del puesto #1 al puesto #1342 de 1527 -- practicamente
+    invisible para la busqueda. Probando esta misma foto contra varios
+    angulos y quedandose con la MEJOR distancia para cada candidato del
+    catalogo, el SKU correcto volvia a aparecer en el puesto #1. El costo
+    extra es minimo (unos pocos milisegundos de CPU local, no hace ninguna
+    llamada de mas a la IA)."""
+    im = pil_img.convert("RGB")
+    out = []
+    for ang in angulos:
+        im_r = im.rotate(ang, expand=True, fillcolor=(255, 255, 255)) if ang else im
+        out.append((str(imagehash.phash(im_r, hash_size=16)), str(imagehash.colorhash(im_r, binbits=3))))
+    return out
+
+
+def distancia_multi(hashes_nuevos, cand_phash: str, cand_colorhash: str) -> float:
+    """Igual que distancia(), pero contra una lista de (phash, colorhash) de
+    la foto nueva en varios angulos -- se queda con la mejor (menor)
+    distancia de todas, para no perder el match por una foto apenas
+    inclinada."""
+    return min(distancia(ph, cand_phash) + 0.5 * distancia(ch, cand_colorhash) for ph, ch in hashes_nuevos)
 
 
 def distancia(hash_a: str, hash_b: str) -> int:
@@ -227,13 +260,19 @@ def compradas_compartidas_como_candidatos():
     return out
 
 
-def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS,
+def preseleccionar_candidatos(hashes_nuevos, n=N_CANDIDATOS,
                                max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
     """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
     le pide categoria al comprador -- la IA la identifica sola a partir de la
     foto). Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia)
     no tienen phash/colorhash -- los dejamos afuera de esta comparacion visual
     en vez de romper (antes esto tiraba KeyError).
+
+    hashes_nuevos: lista de (phash, colorhash) de la foto nueva en varios
+    angulos (ver foto_a_hashes_multi) -- se compara contra TODOS y se usa la
+    mejor distancia, para no perder un match real solo porque la foto vino
+    apenas inclinada (caso real verificado: sin esto, un SKU identico caia
+    del puesto #1 al #1342 de 1527 con solo 15 grados de inclinacion).
 
     Paso 2 (expansion por familia de colores): el hash de imagen (phash+color)
     por si solo deja pasar bastantes "hermanos de color" del mismo modelo --
@@ -246,11 +285,10 @@ def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS,
     pool = [r for r in CATALOGO if r.get("phash") and r.get("colorhash")]
     pool += compradas_compartidas_como_candidatos()
     for r in pool:
-        r["_dist"] = distancia(phash_nuevo, r["phash"]) + 0.5 * distancia(colorhash_nuevo, r["colorhash"])
+        r["_dist"] = distancia_multi(hashes_nuevos, r["phash"], r["colorhash"])
     pool.sort(key=lambda r: r["_dist"])
     base = pool[:n]
 
-    por_sku = {r["sku"]: r for r in pool}
     vistos = {r["sku"] for r in base}
     expandido = list(base)
     for r in base:
@@ -259,7 +297,7 @@ def preseleccionar_candidatos(phash_nuevo, colorhash_nuevo, n=N_CANDIDATOS,
         prefijo = r["sku"][:-3]
         hermanas = [x for x in pool if x["sku"] != r["sku"] and x["sku"].startswith(prefijo)
                     and x["sku"] not in vistos]
-        hermanas.sort(key=lambda h: distancia(phash_nuevo, h["phash"]))
+        hermanas.sort(key=lambda h: h["_dist"])
         for h in hermanas[:max_por_familia]:
             vistos.add(h["sku"])
             h = dict(h)
@@ -499,8 +537,8 @@ if foto is None:
 if foto is not None:
     pil_img = Image.open(foto)
     with st.spinner("Analizando..."):
-        phash_nuevo, colorhash_nuevo = foto_a_hashes(pil_img)
-        candidatos = preseleccionar_candidatos(phash_nuevo, colorhash_nuevo)
+        hashes_nuevos = foto_a_hashes_multi(pil_img)
+        candidatos = preseleccionar_candidatos(hashes_nuevos)
         client = get_anthropic_client()
         try:
             reporte = analizar(client, pil_img, candidatos)

@@ -1,4 +1,4 @@
-# Radar DG — guía de puesta en marcha (v8)
+# Radar DG — guía de puesta en marcha (v9)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
@@ -7,6 +7,21 @@ programar para seguir estos pasos, solo ir uno por uno.
 **Si ya tenías una versión anterior desplegada:** solo necesitás repetir el
 Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
 Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
+
+**Novedades de v9 — bug importante corregido:**
+- Se encontró la causa de por qué a veces un zapato idéntico no aparecía
+  como coincidencia (caso real: SKU D17240011620). El método de comparación
+  de imágenes (phash) es muy sensible a que la foto esté apenas inclinada
+  — con una foto realista rotada ~15° y recortada, el SKU correcto pasaba
+  del puesto #1 al puesto #1,342 de 1,527 en la búsqueda, prácticamente
+  invisible. Ahora la foto nueva se compara en 7 ángulos distintos (no solo
+  derecha) y se usa la mejor coincidencia de todas. Probado con este caso
+  real: el SKU correcto vuelve a aparecer en el puesto #1. El costo extra es
+  mínimo (milisegundos de cálculo local, no agrega llamadas a la IA).
+- Consejo para reducir aún más estos casos: pedile a los compradores que
+  sea posible saquen la foto de perfil, derecha, contra un fondo liso — se
+  parece más a como están fotografiados los productos del catálogo y ayuda
+  a que el radar encuentre mejor las coincidencias.
 
 **Novedades de v8:**
 - Se integró el logo de Dorothy Gaynor arriba de todo, sobre una franja
