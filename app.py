@@ -416,15 +416,28 @@ def construir_reporte_tool():
                 },
                 "redundancias": {
                     "type": "array",
-                    "description": f"Solo SKUs de la lista de candidatos entregada, con similitud >= {UMBRAL_REDUNDANCIA}%.",
+                    "description": f"Solo SKUs de la lista de candidatos entregada, con similitud >= {UMBRAL_REDUNDANCIA}%. "
+                                    f"IMPORTANTE: la app va a descartar automaticamente cualquier item con similitud_pct "
+                                    f"menor a {UMBRAL_REDUNDANCIA}, asi que no tiene sentido incluir candidatos mas debiles.",
                     "items": {
                         "type": "object",
                         "properties": {
                             "sku": {"type": "string"},
                             "similitud_pct": {"type": "integer"},
-                            "diferencia_clave": {"type": "string", "description": "UNA sola frase corta, la diferencia mas importante."},
+                            "vectores_coincidentes": {
+                                "type": "array", "items": {"type": "string"},
+                                "description": "Nombres de dimensiones del DDG en las que este candidato "
+                                                "coincide con la muestra nueva (ej. ['silueta', 'altura', 'punta']).",
+                            },
+                            "vectores_diferentes": {
+                                "type": "array", "items": {"type": "string"},
+                                "description": "Nombres de dimensiones del DDG en las que este candidato "
+                                                "DIFIERE de la muestra nueva (ej. ['color']). Nunca lo dejes "
+                                                "vacio si similitud_pct < 100.",
+                            },
+                            "diferencia_clave": {"type": "string", "description": "UNA sola frase corta, la diferencia mas importante (para mostrar en pantalla)."},
                         },
-                        "required": ["sku", "similitud_pct", "diferencia_clave"],
+                        "required": ["sku", "similitud_pct", "vectores_coincidentes", "vectores_diferentes", "diferencia_clave"],
                     },
                 },
                 "huecos": {"type": "string", "description": "Una frase corta: que decision nueva cubre (o no) esta muestra."},
@@ -511,12 +524,26 @@ importa es que el modelo (silueta) ya existe en el catalogo, en algun color.
 Si ademas el color de esa variante SI se parece al de la muestra nueva, marcalo
 como el match mas fuerte de ese modelo.
 
+COMO COMPARAR CADA CANDIDATO (instruccion tecnica, no negociable): recibiste la
+foto de la muestra nueva Y la foto de cada candidato preseleccionado -- la
+comparacion tiene que ser SIEMPRE visual (mirando ambas imagenes), nunca basada
+solo en el texto de categoria/SKU. Para cada candidato que incluyas en
+redundancias, compara explicitamente contra la muestra nueva usando las 8
+dimensiones del DDG y llena vectores_coincidentes/vectores_diferentes con los
+nombres exactos de las dimensiones (nunca digas solo "es similar" o "no es
+similar" sin especificar en que dimension). Si por algun motivo no recibiste
+ninguna imagen de un candidato (solo texto), decilo explicitamente en huecos o
+motivo en vez de reportar que no hay coincidencias -- la ausencia de imagenes
+no es lo mismo que la ausencia de coincidencias.
+
 Devolve el reporte usando la herramienta reporte_radar_dg:
 1. categoria_identificada: la categoria que identificas por la silueta.
 2. vector_dg: las dimensiones del DDG.
 3. redundancias: SOLO candidatos que realmente compiten por la misma decision de
-   compra (misma silueta + misma altura/tacon + suela + punta compatibles). No
-   fuerces coincidencias por color o textura parecidos.
+   compra (misma silueta + misma altura/tacon + suela + punta compatibles), con
+   vectores_coincidentes/vectores_diferentes explicitos para cada uno. No
+   fuerces coincidencias por color o textura parecidos, y no incluyas nada por
+   debajo de {UMBRAL_REDUNDANCIA}% (la app lo descarta igual).
 4. huecos: una frase.
 5. Los dos indices (0-100).
 6. La recomendacion final con motivo (una frase, fundamentada en cobertura de
@@ -568,7 +595,17 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
     )
     for block in msg.content:
         if block.type == "tool_use":
-            return block.input
+            reporte = block.input
+            # Filtro duro (v13): el prompt le pide al modelo no incluir nada
+            # por debajo de UMBRAL_REDUNDANCIA, pero es solo una instruccion de
+            # texto -- se vio en un caso real que el modelo igual incluyo
+            # candidatos al 30% y 35%. Se fuerza aca en codigo para que el
+            # umbral se respete siempre, sin depender de que el modelo obedezca.
+            reporte["redundancias"] = [
+                r for r in reporte.get("redundancias", [])
+                if r.get("similitud_pct", 0) >= UMBRAL_REDUNDANCIA
+            ]
+            return reporte
     raise RuntimeError("El modelo no devolvio el reporte estructurado esperado.")
 
 

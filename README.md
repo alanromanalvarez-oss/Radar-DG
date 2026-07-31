@@ -1,5 +1,51 @@
 # Radar DG — guía de puesta en marcha (v13)
 
+**Segunda tanda de v13 — a partir del documento de Toño sobre el motor de búsqueda y el caso real del taco negro:**
+- Confirmado con Alan: se mantienen los 4 valores extra de silueta para Bota
+  (Caña corta/media/alta, Sobre la rodilla) — pendiente que Toño los sume
+  también de su lado para que los dos sistemas queden iguales.
+- **Se blindó el umbral de redundancia en código, no solo en el prompt:** se
+  detectó un caso real donde el modelo mostró coincidencias al 30% y 35% pese
+  a que el prompt le pide "solo candidatos con similitud >= 40%" — esa regla
+  vivía solo como texto, y un modelo de lenguaje puede no seguirla al pie de
+  la letra siempre. Ahora la app filtra `redundancias` en Python después de
+  la respuesta, así el umbral se respeta siempre, pase lo que pase en el
+  razonamiento del modelo.
+- Se incorporó casi textual la instrucción técnica que compartió Toño: para
+  cada candidato, el modelo ahora tiene que decir explícitamente en qué
+  dimensiones del DDG coincide y en cuáles difiere (`vectores_coincidentes` /
+  `vectores_diferentes`), no solo una frase genérica de "es similar". También
+  se agregó la regla de honestidad: si por algún motivo no se mandaron
+  imágenes de candidatos, decirlo explícitamente en vez de reportar "no hay
+  coincidencias" (que sugeriría que sí comparó y no encontró nada).
+- **Diagnóstico del caso del taco negro que reportaste (D12560139501 /
+  D02380175501 no aparecen):** reconstruí tu foto a partir de la captura de
+  pantalla que mandaste y medí la distancia de hash perceptual contra esos
+  2 SKUs y contra los 3 que sí aparecieron. Ninguno de los 5 quedó entre los
+  primeros 15 candidatos por hash — el top 15 lo dominan Sandalias, Tenis,
+  Flats, Choclos y Botines, categorías que no compiten para nada con un
+  zapato de salón cerrado. Esto confirma que el problema NO es que la IA
+  compare mal (de hecho, para los candidatos que sí le llegaron, razonó bien:
+  dijo correctamente que eran destalonados/mocasines y por eso no los marcó
+  como duplicado real) — el problema es que la preselección por hash de
+  imagen (phash/colorhash) a veces no entiende "esto es un zapato de salón
+  cerrado" de la misma forma que lo entendería mirando el DDG, y dos zapatos
+  de siluetas totalmente distintas pueden terminar con una distancia de hash
+  parecida solo por iluminación/fondo/ángulo. Es la misma familia de problema
+  que ya venimos parchando caso por caso (D17240011620, el taco D80020002501)
+  — cada parche ayuda pero no cierra la causa de fondo.
+  **Propuesta para cerrarlo de raíz (viene del documento de Toño, y coincide
+  con lo que ya veníamos sospechando):** hacer una clasificación única de
+  todo el catálogo (las ~1,527 fotos) con los 9 vectores del DDG usando la
+  IA (Categoría, Silueta, Altura, Punta, etc. — igual que se hace hoy con la
+  foto nueva), guardarlo una sola vez en `catalog_index.json`, y usar eso
+  como preselección principal (candidatos con misma Categoría+Silueta+Color
+  primero, hash de imagen como desempate) en vez de depender solo del hash de
+  imagen. Esto es un trabajo aparte: son ~1,527 llamadas a la API de Claude
+  (una sola vez, no en cada análisis), con un costo y un tiempo de corrida
+  reales — no lo corrí porque implica gastar tu presupuesto de API sin que me
+  lo hayas confirmado. Avisame si querés que lo arme y lo corra.
+
 **Novedades de v13 — alineación con el documento de Toño ("RADAR DG — Instrucciones del Proyecto v2"):**
 - **Bug de raíz encontrado y corregido:** `categoria_identificada` era texto
   libre, y el propio prompt le daba a la IA ejemplos que ni siquiera existen
