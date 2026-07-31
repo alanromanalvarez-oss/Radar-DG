@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v13
+Radar DG - app para compradores en feria (ej. SAPICA) -- v14
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -330,7 +330,64 @@ def compradas_compartidas_como_candidatos():
     return out
 
 
-def preseleccionar_candidatos(hashes_nuevos, n=N_CANDIDATOS,
+def _grupo(dimension: str, valor: str):
+    """Devuelve el grupo_estructural de un valor (ver ddg.json) -- None si la
+    dimension no tiene grupo_estructural definido o el valor no esta mapeado."""
+    return DDG.get("dimensiones", {}).get(dimension, {}).get("grupo_estructural", {}).get(valor)
+
+
+def candidatos_por_vector_ddg(vector_nuevo: dict, n_tier1=20, n_tier2=10):
+    """Etapa A 'a la Tono' (v13): en vez de depender solo del hash de imagen
+    (que a veces confunde siluetas distintas por parecido de fondo/luz/angulo
+    -- caso real verificado: ningun candidato relevante quedaba en el top 15
+    por hash para una muestra real), esto preselecciona candidatos filtrando
+    por los vectores DDG reales del catalogo (categoria_ia/vector_dg_ia),
+    cuando ya fueron precalculados por clasificar_catalogo_con_ddg.py.
+
+    Se usa como UNION con la preseleccion por hash (candidatos_por_vector_ddg
+    + preseleccionar_candidatos), nunca como reemplazo -- si el catalogo
+    todavia no esta clasificado (vector_dg_ia ausente), esta funcion
+    simplemente no aporta nada y la app sigue funcionando solo con hash como
+    antes.
+
+    vector_nuevo: {"categoria_identificada": str, "vector_dg": {...}} de la
+    foto nueva (ver clasificar_foto_nueva).
+
+    Tier 1 (fuerte): misma categoria + mismo grupo_estructural de silueta +
+    mismo grupo_estructural de altura -- estos SI compiten por la misma
+    decision de compra segun el DDG.
+    Tier 2 (media): misma categoria + misma silueta, altura distinta -- se
+    incluyen con menos prioridad para no perder casos limite."""
+    if not vector_nuevo:
+        return []
+    cat_nueva = vector_nuevo.get("categoria_identificada")
+    vec_nuevo = vector_nuevo.get("vector_dg", {})
+    silueta_grupo_nuevo = _grupo("silueta", vec_nuevo.get("silueta"))
+    altura_grupo_nuevo = _grupo("altura", vec_nuevo.get("altura"))
+
+    tier1, tier2 = [], []
+    for r in CATALOGO:
+        if not r.get("vector_dg_ia") or r.get("categoria_ia") != cat_nueva:
+            continue
+        vec_cat = r["vector_dg_ia"]
+        silueta_grupo_cat = _grupo("silueta", vec_cat.get("silueta"))
+        altura_grupo_cat = _grupo("altura", vec_cat.get("altura"))
+        mismo_silueta = silueta_grupo_nuevo is not None and silueta_grupo_nuevo == silueta_grupo_cat
+        mismo_altura = altura_grupo_nuevo is not None and altura_grupo_nuevo == altura_grupo_cat
+        if mismo_silueta and mismo_altura:
+            tier1.append(r)
+        elif mismo_silueta:
+            tier2.append(r)
+
+    out = []
+    for r in tier1[:n_tier1] + tier2[:n_tier2]:
+        r = dict(r)
+        r["match_vector_ddg"] = True
+        out.append(r)
+    return out
+
+
+def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, n=N_CANDIDATOS,
                                max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
     """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
     le pide categoria al comprador -- la IA la identifica sola a partir de la
@@ -373,6 +430,16 @@ def preseleccionar_candidatos(hashes_nuevos, n=N_CANDIDATOS,
             h = dict(h)
             h["familia_color_de"] = r["sku"]
             expandido.append(h)
+
+    # Union con la preseleccion por vector DDG (v13, Etapa A a la Tono) --
+    # SUMA candidatos, nunca reemplaza los de hash. Si el catalogo todavia no
+    # esta clasificado (clasificar_catalogo_con_ddg.py no corrido) esto no
+    # agrega nada y la app sigue igual que antes.
+    for r in candidatos_por_vector_ddg(vector_nuevo):
+        if r["sku"] not in vistos:
+            vistos.add(r["sku"])
+            expandido.append(r)
+
     return expandido
 
 
@@ -550,6 +617,57 @@ Devolve el reporte usando la herramienta reporte_radar_dg:
    decisiones, nunca "me gusta / no me gusta")."""
 
 
+def construir_tool_clasificacion_rapida():
+    """Herramienta liviana (v13, Etapa A a la Tono): solo categoria + vector_dg,
+    sin redundancias/indices/recomendacion -- se usa ANTES de preseleccionar
+    candidatos, para poder filtrar el catalogo por estos mismos campos (ver
+    candidatos_por_vector_ddg) en vez de depender solo del hash de imagen."""
+    props = {d: {"type": "string"} for d in DIMENSIONES_DDG}
+    return {
+        "name": "clasificar_muestra",
+        "description": "Identifica la categoria y el vector DDG de una foto de calzado.",
+        "input_schema": {
+            "type": "object",
+            "properties": {
+                "categoria_identificada": {"type": "string", "enum": CATEGORIAS_VALIDAS},
+                "vector_dg": {"type": "object", "properties": props, "required": DIMENSIONES_DDG},
+            },
+            "required": ["categoria_identificada", "vector_dg"],
+        },
+    }
+
+
+def clasificar_foto_nueva(client, pil_img: Image.Image):
+    """Paso previo a la preseleccion (v13): una llamada chica y rapida (una
+    sola imagen, sin candidatos) para saber la categoria + vector_dg de la
+    foto nueva ANTES de buscar candidatos -- asi candidatos_por_vector_ddg
+    puede filtrar el catalogo (ya clasificado por
+    clasificar_catalogo_con_ddg.py) por estos mismos campos, en vez de
+    depender solo del hash de imagen. Si esta llamada falla por lo que sea,
+    se devuelve None y la app sigue funcionando solo con hash, como antes."""
+    try:
+        msg = client.messages.create(
+            model=MODEL,
+            max_tokens=400,
+            temperature=0,
+            system=[{
+                "type": "text",
+                "text": "Identifica la categoria (Vector 1) y el vector DDG de esta foto de "
+                        "calzado, usando el DDG de referencia:\n\n" + json.dumps(DDG, ensure_ascii=False, indent=2),
+                "cache_control": {"type": "ephemeral"},
+            }],
+            tools=[construir_tool_clasificacion_rapida()],
+            tool_choice={"type": "tool", "name": "clasificar_muestra"},
+            messages=[{"role": "user", "content": [image_block(pil_img)]}],
+        )
+        for block in msg.content:
+            if block.type == "tool_use":
+                return block.input
+    except Exception:
+        pass
+    return None
+
+
 def image_block(pil_img: Image.Image, max_side=512):
     im = pil_img.convert("RGB")
     im.thumbnail((max_side, max_side))
@@ -576,6 +694,9 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
         if c.get("familia_color_de"):
             etiqueta += (f" | MISMO MODELO en otro color que el SKU {c['familia_color_de']} "
                          "(mismo molde/silueta confirmado por catalogo, no por parecido visual)")
+        if c.get("match_vector_ddg"):
+            etiqueta += (" | COINCIDE EN CATEGORIA+SILUETA(+ALTURA) segun el DDG "
+                         "(dato estructurado, preseleccionado por vector, no solo por parecido de imagen)")
         content.append({"type": "text", "text": etiqueta})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": c["thumb_b64"]}})
 
@@ -588,6 +709,13 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
     msg = client.messages.create(
         model=MODEL,
         max_tokens=1200,
+        temperature=0,  # v13: se detecto que la misma foto podia dar resultados
+                        # distintos en corridas distintas -- sin esto el modelo
+                        # muestrea con temperatura por defecto (no deterministico).
+                        # Bajarla a 0 no garantiza 100% identico siempre (el motor
+                        # de inferencia puede variar por microsegundos en casos
+                        # limite), pero reduce muchisimo la variacion corrida a
+                        # corrida para esta tarea de clasificacion/comparacion.
         system=system_blocks,
         tools=[construir_reporte_tool()],
         tool_choice={"type": "tool", "name": "reporte_radar_dg"},
@@ -666,9 +794,16 @@ if foto is not None:
                                                           # los bytes con un dato de
                                                           # rotacion en el EXIF
     with st.spinner("Analizando..."):
-        hashes_nuevos = foto_a_hashes_multi(pil_img)
-        candidatos = preseleccionar_candidatos(hashes_nuevos)
         client = get_anthropic_client()
+        hashes_nuevos = foto_a_hashes_multi(pil_img)
+        # v13: si el catalogo ya fue clasificado con clasificar_catalogo_con_ddg.py,
+        # esta llamada chica primero identifica categoria+vector_dg de la foto
+        # nueva para poder sumar candidatos por esos campos (mas confiables que
+        # el hash de imagen solo) -- ver candidatos_por_vector_ddg. Si falla o el
+        # catalogo no esta clasificado todavia, no aporta nada y sigue con hash
+        # solo, como antes.
+        vector_nuevo = clasificar_foto_nueva(client, pil_img)
+        candidatos = preseleccionar_candidatos(hashes_nuevos, vector_nuevo=vector_nuevo)
         try:
             reporte = analizar(client, pil_img, candidatos)
         except Exception as e:

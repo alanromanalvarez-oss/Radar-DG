@@ -1,4 +1,37 @@
-# Radar DG — guía de puesta en marcha (v13)
+# Radar DG — guía de puesta en marcha (v14)
+
+**Novedades de v14 — Etapa A (clasificación del catálogo por vector DDG) + fix de inconsistencia:**
+- **Fix de inconsistencia (subís la misma foto y da resultados distintos):**
+  las llamadas a Claude no tenían fijada la "temperatura" (el parámetro que
+  controla cuánto varía la respuesta entre corridas) — quedaba en el valor
+  por defecto, que sí puede variar. Ahora está en 0 en todas las llamadas,
+  lo que reduce muchísimo la variación corrida a corrida para este tipo de
+  tarea (no es una garantía matemática absoluta al 100%, pero es la manera
+  correcta y estándar de pedirle consistencia a un modelo).
+- **Etapa A construida (pediste ver la funcionalidad antes de decidir sobre
+  el costo):** nuevo script `clasificar_catalogo_con_ddg.py` que corre Claude
+  una sola vez por SKU del catálogo para asignarle categoria_ia + vector_dg_ia
+  (el mismo criterio con el que se analiza la foto nueva), y lo guarda en
+  `catalog_index.json`. La app (función nueva `candidatos_por_vector_ddg` en
+  `app.py`) ya está lista para usar esos datos en cuanto existan: agrega
+  candidatos que compartan categoría + silueta (+ altura) según el DDG,
+  **sumados** a los que ya encuentra por hash de imagen (no reemplaza nada,
+  así que no hay riesgo de perder lo que ya funcionaba).
+- **Cómo probar la funcionalidad sin comprometerte al costo completo:**
+  ```
+  export ANTHROPIC_API_KEY="tu-clave"
+  python clasificar_catalogo_con_ddg.py catalog_index.json ddg.json --sample 20
+  ```
+  Esto clasifica solo 20 SKUs (los que tengan foto) y te va imprimiendo cada
+  uno con su categoría y vector asignado, para que revises si tiene sentido
+  antes de decidir correr el resto (~1,527 en total). Es reanudable: si
+  después corrés el script sin `--sample` (o por tandas con `--start`/`--end`),
+  salta los que ya estén clasificados, así nunca pagás dos veces por el mismo
+  SKU.
+- **No lo corrí yo en este entorno** porque necesita tu `ANTHROPIC_API_KEY`
+  real y no la tengo acá — corré vos la muestra de 20 (te va a tomar menos
+  de un minuto) y contame qué te parece el resultado antes de ir por el
+  catálogo completo.
 
 **Segunda tanda de v13 — a partir del documento de Toño sobre el motor de búsqueda y el caso real del taco negro:**
 - Confirmado con Alan: se mantienen los 4 valores extra de silueta para Bota
