@@ -1,4 +1,77 @@
-# Radar DG — guía de puesta en marcha (v14)
+# Radar DG — guía de puesta en marcha (v16)
+
+**Novedades de v16 — fotos de mejor resolución para los items de la Base Presapica:**
+- Nuevo script `reemplazar_fotos_alta_res.py`: reemplaza la miniatura
+  (`thumb_b64`) y recalcula phash/colorhash de las entradas del catálogo
+  cuyo SKU coincide exactamente con el nombre de un archivo en una carpeta
+  de fotos en mejor resolución.
+- Ya corrí este script UNA VEZ acá mismo con la carpeta "Imagenes Base" que
+  compartiste: los 206 archivos coincidieron exactamente con 206 SKUs que
+  ya estaban en el catálogo (de la Base Presapica -- marcas/proveedores
+  como BAIZHEN, BEIRA, LADY PAU, SANDO, etc., y también SKUs reales tipo
+  D06950184611), sin errores y sin ninguno sin coincidencia. Antes esas
+  miniaturas eran de ~220x140px bastante comprimidas (extraídas del Excel);
+  ahora salen de la foto en alta resolución que mandaste (hasta 1280x960),
+  recomprimidas al mismo ancho que usa el resto del catálogo (~220px, para
+  no disparar el tamaño del archivo ni el costo de mandarlas a Claude en
+  cada análisis) pero partiendo de una fuente mucho más nítida. Esto
+  debería mejorar la precisión de la comparación por hash para estos 206
+  productos en particular.
+- El nombre de archivo (ej. "BAIZHEN 3", "LADY PAU 12") ya se usa tal cual
+  como identificador ("SKU") de esos productos en el catálogo desde que se
+  procesó originalmente la Base Presapica -- no hizo falta inventar nada
+  nuevo, el script solo empareja por ese nombre.
+- Si tenés más carpetas de fotos en mejor resolución (de este u otro
+  proveedor), se puede correr el mismo script de nuevo con esa carpeta.
+
+**Novedades de v15 — más coincidencias visibles, número de versión en pantalla, y propuesta sobre cámara/v12:**
+- **Control de versiones:** ahora se ve "v15" junto al logo (arriba) y en la
+  barra lateral, siempre. Se actualiza a mano en cada entrega (variable
+  `VERSION` al principio de `app.py`) para que el equipo sepa qué versión
+  está desplegada sin tener que preguntar.
+- **"Tienes que mostrar más coincidencias" — solucionado con un panel nuevo,
+  sin aflojar la regla que ya arreglamos:** el motivo de que solo mostrara 2
+  de 8+ similares es que "Coincidencias" ahora es exigente A PROPÓSITO
+  (filtro de 40% + las reglas de estructura que arreglaron
+  el caso del destalonado vs. cerrado) — eso es lo que hace confiable la
+  recomendación de compra, y bajarlo de nuevo reintroduciría ese mismo tipo
+  de error. En vez de aflojarlo, se agregó una segunda sección, **"Otros
+  parecidos en el catálogo"**, que muestra el resto de los candidatos ya
+  encontrados (por hash + por vector DDG) SIN el filtro estricto — son
+  informativos, "para que los tengas en cuenta", no pasan por la validación
+  dura de la IA. Esto debería devolver la sensación de la v12 (ver muchas
+  similares) sin perder la precisión que se corrigió después.
+- **Error "tomo la foto con la cámara y no pasa nada" (2 de 8 intentos
+  funcionó):** no lo pude reproducir en este entorno (no tengo un celular
+  real ni la app en vivo para probarlo), así que va como diagnóstico +
+  recomendación, no como fix garantizado. La causa más probable: al abrir la
+  app de cámara nativa del celular, el navegador de fondo puede perder la
+  conexión en vivo con la app (Streamlit necesita esa conexión abierta todo
+  el tiempo) — esto es mucho más común en navegadores "embebidos" dentro de
+  otra app (WhatsApp, Instagram) que en el navegador normal del celular
+  (Safari/Chrome), porque esos navegadores embebidos suspenden la página más
+  agresivamente en segundo plano. **Recomendación concreta:** decile al
+  equipo que abra el link de Radar DG en Safari o Chrome directamente (no
+  haciendo clic en el link desde WhatsApp) — si el problema desaparece o
+  mejora mucho, confirma el diagnóstico y no hace falta tocar código; si
+  sigue igual, es otra causa y hay que seguir investigando con más detalle
+  (idealmente con acceso a los logs de Streamlit Cloud del momento exacto
+  de la falla).
+- **Sobre "yo me sentí más cómodo con la v12" — propuesta para reconciliar
+  eso con lo que vos y Toño plantearon:** la v12 se sentía mejor porque
+  mostraba muchas coincidencias sin ser tan estricta -- pero esa misma
+  falta de exigencia fue lo que causó el error real que reportaste después
+  (comparó un cerrado con un destalonado como si fueran lo mismo). La
+  separación que se hizo en esta versión es exactamente para no tener que
+  elegir entre "amplio" y "correcto": la sección de "Coincidencias" queda
+  estricta y correcta (maneja la recomendación de compra), y "Otros
+  parecidos" queda amplia e informativa (para que decidas vos con más
+  contexto, sin que la app se comprometa a decir que son lo mismo). Esto es
+  lo que yo propondría como el camino: no volver a la lógica más floja de
+  la v12, sino mantener las dos vistas separadas y seguir afinando la
+  Etapa A (clasificación del catálogo por vector DDG, ver v14) para que
+  "Coincidencias" encuentre cada vez más de lo que realmente aplica, en vez
+  de aflojar el criterio.
 
 **Hotfix 2 de v14 — KeyError en el celular de Toño + cámara embebida:**
 - **`temperature` sacado de las 3 llamadas:** `claude-sonnet-5` la rechaza

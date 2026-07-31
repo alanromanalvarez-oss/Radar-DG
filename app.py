@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v14
+Radar DG - app para compradores en feria (ej. SAPICA) -- v16
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -30,6 +30,11 @@ import numpy as np
 from PIL import Image, ImageOps
 import imagehash
 import anthropic
+
+VERSION = "v16"  # Control de versiones (a pedido de Alan): se actualiza a mano
+                 # en cada entrega, se muestra en la pantalla principal y en la
+                 # barra lateral para que el equipo sepa siempre que version
+                 # esta desplegada sin tener que preguntar.
 
 MODEL = "claude-sonnet-5"
 N_CANDIDATOS = 12          # cuantos SKUs se preseleccionan por hash (forma+color) como
@@ -796,8 +801,8 @@ else:
     st.title("Dorothy Gaynor")
 
 st.markdown(
-    "<p style='margin-top:-0.6rem; color:#9C6B3E; font-weight:600; letter-spacing:0.04em;'>"
-    "🧭 RADAR DG</p>",
+    f"<p style='margin-top:-0.6rem; color:#9C6B3E; font-weight:600; letter-spacing:0.04em;'>"
+    f"🧭 RADAR DG <span style='color:#9C6B3E99; font-weight:400; font-size:0.75em;'>{VERSION}</span></p>",
     unsafe_allow_html=True,
 )
 
@@ -898,6 +903,42 @@ if foto is not None:
                                + ", ".join(otros_colores[:6])
                                + (" …" if len(otros_colores) > 6 else ""))
 
+    # v15: "Otros parecidos" -- Alan reporto que la lista de "Coincidencias"
+    # de arriba (redund) le mostraba muy pocos items (ej. 2, cuando el sabia
+    # que el catalogo tenia 8+ parecidos) comparado con como se sentia la
+    # v12. La causa es que "Coincidencias" ahora es EXIGENTE a proposito
+    # (filtro duro de UMBRAL_REDUNDANCIA + reglas de estructura, para que el
+    # indice de recomendacion de compra sea confiable) -- eso es correcto
+    # para decidir si comprar o no, pero deja afuera items que el comprador
+    # igual quiere VER para tener contexto. Esta seccion muestra el resto de
+    # los candidatos ya preseleccionados (los mismos que ya se buscaron por
+    # hash + vector DDG), SIN el filtro duro, para recuperar esa vista
+    # amplia -- son informativos, no pasaron por la validacion estricta de
+    # la IA como "Coincidencias" si.
+    redund_skus = {r["sku"] for r in redund}
+    otros = [c for c in candidatos if c["sku"] not in redund_skus]
+    otros.sort(key=lambda c: c.get("_dist", 200))
+    otros = otros[:10]
+    if otros:
+        st.markdown("---")
+        st.markdown(f"**Otros parecidos en el catálogo** ({len(otros)}, no confirmados como "
+                    "coincidencia por la IA -- para que los tengas en cuenta igual):")
+        for c in otros:
+            cols = st.columns([1, 4])
+            with cols[0]:
+                st.image(base64.b64decode(c["thumb_b64"]), width=70)
+            with cols[1]:
+                notas_extra = []
+                if c.get("familia_color_de"):
+                    notas_extra.append(f"mismo modelo que {c['familia_color_de']}")
+                if c.get("match_vector_ddg"):
+                    notas_extra.append("coincide en categoría+silueta según el DDG")
+                extra = f" ({'; '.join(notas_extra)})" if notas_extra else ""
+                st.markdown(f"**{c['sku']}** — {c['categoria']}{extra}")
+                fuente_legible = FUENTES_LABELS.get(c.get("fuente"), "Catálogo activo")
+                st.caption(f"Fuente: {fuente_legible} · Inv: {c.get('inventario', 0)} · "
+                           f"Venta: {c.get('ventas', 0)} · ST: {c.get('sell_through_pct', 0)}%")
+
     # ---- guardado: recien aca se pide nombre / proveedor / costo ----
     st.markdown("---")
     st.markdown("**💾 Guardar en la base compartida**")
@@ -943,6 +984,7 @@ if foto is not None:
 
 
 with st.sidebar:
+    st.caption(f"Radar DG {VERSION}")
     st.header("Feria en curso")
     if sheets_disponible():
         historial = leer_historial_compartido()
