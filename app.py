@@ -26,6 +26,7 @@ import uuid
 import datetime as dt
 
 import streamlit as st
+import numpy as np
 from PIL import Image
 import imagehash
 import anthropic
@@ -175,26 +176,56 @@ def marcar_comprada_en_sheet(fila_id: str):
 ANGULOS_ROTACION = (-15, -10, -5, 0, 5, 10, 15)  # ver foto_a_hashes_multi
 
 
+def auto_crop_contenido(im: Image.Image, umbral=245, margen_pct=0.04):
+    """Recorta la imagen a la zona donde hay 'producto' (descarta el margen
+    blanco/fondo alrededor).
+
+    Por que: se detecto un segundo caso real (SKU D17240011620, foto subida
+    por Alan) donde el zapato SI estaba en el catalogo y la foto nueva NO
+    estaba rotada, pero seguia sin aparecer como coincidencia (quedaba en el
+    puesto #161 de 1527). La causa: la foto nueva tenia mucho mas margen
+    blanco alrededor del zapato que la foto del catalogo (el zapato se veia
+    mas chico dentro del cuadro) -- el hash perceptual compara la imagen
+    completa, asi que ese 'zoom' distinto alcanzaba para desviar bastante la
+    comparacion aunque el zapato fuera identico. Recortando ambas fotos a su
+    contenido real antes de hashear (sin el margen blanco), la distancia bajo
+    de 124 a 40 y el SKU correcto volvio al puesto #1. Este recorte se aplica
+    tanto a la foto nueva como al catalogo (ver recalcular_hashes_autocrop.py
+    para el catalogo)."""
+    arr = np.array(im.convert("RGB"))
+    no_fondo = np.any(arr < umbral, axis=2)
+    ys, xs = np.where(no_fondo)
+    if len(xs) == 0:
+        return im
+    w, h = im.size
+    mx, my = int(w * margen_pct), int(h * margen_pct)
+    x0 = max(0, xs.min() - mx)
+    y0 = max(0, ys.min() - my)
+    x1 = min(w, xs.max() + mx)
+    y1 = min(h, ys.max() + my)
+    return im.crop((x0, y0, x1, y1))
+
+
 def foto_a_hashes(pil_img: Image.Image):
     im = pil_img.convert("RGB")
     return str(imagehash.phash(im, hash_size=16)), str(imagehash.colorhash(im, binbits=3))
 
 
 def foto_a_hashes_multi(pil_img: Image.Image, angulos=ANGULOS_ROTACION):
-    """Calcula el hash de la foto nueva en varios angulos de rotacion leve.
+    """Calcula el hash de la foto nueva (recortada a su contenido real, ver
+    auto_crop_contenido) en varios angulos de rotacion leve.
 
-    Por que: las fotos del catalogo son de estudio, perfectamente derechas.
-    Las que saca un comprador en la feria casi nunca lo estan -- un
-    telefono en mano, un poco inclinado, es la norma. Se verifico con un
-    caso real (el mismo SKU exacto, pero con la foto rotada ~15 grados y
-    recortada de forma realista): comparando con un solo angulo, el SKU
-    correcto caia del puesto #1 al puesto #1342 de 1527 -- practicamente
-    invisible para la busqueda. Probando esta misma foto contra varios
-    angulos y quedandose con la MEJOR distancia para cada candidato del
-    catalogo, el SKU correcto volvia a aparecer en el puesto #1. El costo
-    extra es minimo (unos pocos milisegundos de CPU local, no hace ninguna
-    llamada de mas a la IA)."""
-    im = pil_img.convert("RGB")
+    Por que la rotacion: las fotos del catalogo son de estudio, perfectamente
+    derechas. Las que saca un comprador en la feria casi nunca lo estan -- un
+    telefono en mano, un poco inclinado, es la norma. Se verifico con un caso
+    real (el mismo SKU exacto, pero con la foto rotada ~15 grados y recortada
+    de forma realista): comparando con un solo angulo, el SKU correcto caia
+    del puesto #1 al puesto #1342 de 1527 -- practicamente invisible para la
+    busqueda. Probando esta misma foto contra varios angulos y quedandose con
+    la MEJOR distancia para cada candidato del catalogo, el SKU correcto
+    volvia a aparecer en el puesto #1. El costo extra es minimo (unos pocos
+    milisegundos de CPU local, no hace ninguna llamada de mas a la IA)."""
+    im = auto_crop_contenido(pil_img.convert("RGB"))
     out = []
     for ang in angulos:
         im_r = im.rotate(ang, expand=True, fillcolor=(255, 255, 255)) if ang else im
@@ -244,6 +275,7 @@ def compradas_compartidas_como_candidatos():
             continue
         try:
             im = Image.open(io.BytesIO(base64.b64decode(fila["foto_base64"]))).convert("RGB")
+            im = auto_crop_contenido(im)  # mismo recorte que se le aplica a la foto nueva y al catalogo
             phash = str(imagehash.phash(im, hash_size=16))
             colorhash = str(imagehash.colorhash(im, binbits=3))
         except Exception:

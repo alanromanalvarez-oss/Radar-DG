@@ -1,4 +1,4 @@
-# Radar DG — guía de puesta en marcha (v9)
+# Radar DG — guía de puesta en marcha (v10)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
@@ -7,6 +7,23 @@ programar para seguir estos pasos, solo ir uno por uno.
 **Si ya tenías una versión anterior desplegada:** solo necesitás repetir el
 Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
 Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
+
+**Novedades de v10 — segundo bug real corregido (el del SKU D17240011620):**
+- Confirmaste que ese tenis SÍ estaba en el catálogo y la foto que subiste
+  (un recorte del PDF) no estaba rotada, pero igual no aparecía. Encontré la
+  causa real: tu foto tenía mucho más margen blanco alrededor del zapato que
+  la miniatura del catálogo (el zapato se veía más chico dentro del cuadro).
+  El sistema de comparación mira la imagen completa, así que ese "zoom"
+  distinto alcanzaba para desviar la comparación aunque fuera el mismo
+  zapato — quedaba en el puesto 161 de 1,527 en vez del puesto 1.
+- Arreglo: ahora, antes de comparar, se recorta cada foto a su contenido
+  real (sin el margen blanco) — tanto la foto nueva como las ~1,600 del
+  catálogo (se reprocesaron todas con `recalcular_hashes_autocrop.py`).
+  Probado con tu caso real: el SKU correcto pasó del puesto 161 al puesto 1.
+- Si el catálogo se vuelve a regenerar desde cero en el futuro (con
+  `index_catalog.py`, `enriquecer_con_costos.py` o `sumar_presapica.py`), hay
+  que correr `recalcular_hashes_autocrop.py catalog_index.json` una vez al
+  final para que el recorte quede aplicado a todo.
 
 **Novedades de v9 — bug importante corregido:**
 - Se encontró la causa de por qué a veces un zapato idéntico no aparecía
@@ -80,6 +97,7 @@ Qué hay en la carpeta:
 | `requirements.txt` | Lista de librerías que necesita la app |
 | `logo_dg.png` | El logo de Dorothy Gaynor que se muestra arriba de todo |
 | `.streamlit/config.toml` | Paleta de colores de la app (se sube a GitHub, no tiene claves) |
+| `recalcular_hashes_autocrop.py` | Recorta el margen blanco de todas las miniaturas del catálogo antes de comparar (correr una vez después de regenerar el catálogo) |
 
 ---
 
@@ -237,6 +255,7 @@ Subí el `catalog_index.json` actualizado a GitHub (commit + push).
 
 - Nuevo Excel de costos/precios/vistas → `python enriquecer_con_costos.py "Modelos con inventario mayor a 100_URL_VISTAS.xlsx" catalog_index.json`
 - Nuevo Base Presapica (China / Presapica / PRESS27) → `python sumar_presapica.py "Base Presapica.xlsx" catalog_index.json`
+- Al final, siempre → `python recalcular_hashes_autocrop.py catalog_index.json` (para que las fotos nuevas que se sumaron también tengan el margen blanco recortado antes de comparar).
 - Subí el `catalog_index.json` resultante a GitHub cada vez.
 
 ## Después de la feria — que el radar "aprenda"
