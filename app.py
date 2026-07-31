@@ -649,7 +649,10 @@ def clasificar_foto_nueva(client, pil_img: Image.Image):
         msg = client.messages.create(
             model=MODEL,
             max_tokens=400,
-            temperature=0,
+            # OJO: "temperature" esta deprecado para este modelo (claude-sonnet-5)
+            # -- la API devuelve error 400 invalid_request_error si se lo mandas,
+            # sea cual sea el valor. No se pasa este parametro por eso (se probo
+            # en v14 y rompio la app en el momento, se revirtio en el momento).
             system=[{
                 "type": "text",
                 "text": "Identifica la categoria (Vector 1) y el vector DDG de esta foto de "
@@ -709,13 +712,11 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
     msg = client.messages.create(
         model=MODEL,
         max_tokens=1200,
-        temperature=0,  # v13: se detecto que la misma foto podia dar resultados
-                        # distintos en corridas distintas -- sin esto el modelo
-                        # muestrea con temperatura por defecto (no deterministico).
-                        # Bajarla a 0 no garantiza 100% identico siempre (el motor
-                        # de inferencia puede variar por microsegundos en casos
-                        # limite), pero reduce muchisimo la variacion corrida a
-                        # corrida para esta tarea de clasificacion/comparacion.
+        # OJO: se probo bajar "temperature" a 0 en v14 para reducir la
+        # inconsistencia entre corridas, pero la API devolvio error 400
+        # ("temperature is deprecated for this model") con claude-sonnet-5 --
+        # se revirtio de inmediato (Alan lo reporto roto en 2 dispositivos).
+        # Este modelo no acepta ese parametro, sea cual sea el valor.
         system=system_blocks,
         tools=[construir_reporte_tool()],
         tool_choice={"type": "tool", "name": "reporte_radar_dg"},

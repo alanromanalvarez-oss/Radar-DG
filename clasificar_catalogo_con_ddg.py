@@ -140,7 +140,8 @@ def main():
             msg = client.messages.create(
                 model=MODEL,
                 max_tokens=400,
-                temperature=0,
+                # "temperature" esta deprecado para claude-sonnet-5 (error 400
+                # si se lo mandas) -- no se pasa este parametro.
                 system=[{"type": "text", "text": system_prompt, "cache_control": {"type": "ephemeral"}}],
                 tools=[tool],
                 tool_choice={"type": "tool", "name": "clasificar_muestra"},
