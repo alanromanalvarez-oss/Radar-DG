@@ -1,5 +1,28 @@
 # Radar DG — guía de puesta en marcha (v14)
 
+**Hotfix 2 de v14 — KeyError en el celular de Toño + cámara embebida:**
+- **`temperature` sacado de las 3 llamadas:** `claude-sonnet-5` la rechaza
+  con error 400 ("temperature is deprecated for this model") — el hotfix
+  anterior ya lo había sacado, esto ya estaba resuelto en el zip anterior.
+- **KeyError real (`indice_cobertura_nueva_dg`) — causa encontrada:** desde
+  que `redundancias` pide `vectores_coincidentes`/`vectores_diferentes` por
+  candidato (más texto por respuesta), una muestra con muchas coincidencias
+  podía agotar el límite de tokens de la llamada a mitad del reporte y
+  devolver un JSON incompleto — el modelo se quedaba sin espacio antes de
+  llegar a los índices finales. Se subió el límite de 1200 a 3000 tokens, y
+  además se agregó una validación explícita: si algún campo obligatorio
+  falta, ahora se muestra un mensaje claro ("el reporte vino incompleto,
+  probá de nuevo") en vez de que la pantalla reviente con un error técnico.
+- **Se sacó la cámara embebida (`st.camera_input`), a tu pedido:** ahora hay
+  un solo botón de "subí una foto" que abre el selector nativo del
+  celular/tablet/compu (el mismo cartel de "Tomar foto / Galería / Archivos"
+  que ya usan para adjuntar en cualquier otra app) — más compatible que la
+  cámara en vivo embebida, que depende de un permiso de navegador
+  (`getUserMedia`) que varios navegadores "en app" (como el navegador interno
+  de WhatsApp, que es desde donde entró Toño según la captura) bloquean o
+  restringen. Es muy probable que esto también explique otras
+  inconsistencias reportadas en distintos dispositivos.
+
 **Novedades de v14 — Etapa A (clasificación del catálogo por vector DDG) + fix de inconsistencia:**
 - **Fix de inconsistencia (subís la misma foto y da resultados distintos):**
   las llamadas a Claude no tenían fijada la "temperatura" (el parámetro que

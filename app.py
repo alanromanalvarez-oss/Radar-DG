@@ -53,6 +53,15 @@ RECOMENDACIONES = {
     "no_comprar": "🔴 No comprar",
 }
 
+# Campos que el reporte SIEMPRE tiene que traer -- usado tanto para armar el
+# schema de la herramienta (construir_reporte_tool) como para validar la
+# respuesta real del modelo antes de mostrarla en pantalla (ver analizar()).
+# Una sola lista para las dos cosas, asi no se pueden desincronizar.
+REQUERIDOS_REPORTE = [
+    "categoria_identificada", "vector_dg", "redundancias", "huecos",
+    "indice_similitud_dg", "indice_cobertura_nueva_dg", "recomendacion", "motivo",
+]
+
 HOJA_HISTORIAL = "Historial"
 COLUMNAS_SHEET = [
     "id", "timestamp", "comprador", "categoria", "proveedor", "costo",
@@ -517,8 +526,7 @@ def construir_reporte_tool():
                 "sku_a_sustituir": {"type": ["string", "null"]},
                 "motivo": {"type": "string", "description": "Una frase corta, fundamentada en cobertura de decisiones."},
             },
-            "required": ["categoria_identificada", "vector_dg", "redundancias", "huecos", "indice_similitud_dg",
-                         "indice_cobertura_nueva_dg", "recomendacion", "motivo"],
+            "required": REQUERIDOS_REPORTE,
         },
     }
 
@@ -711,7 +719,14 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
 
     msg = client.messages.create(
         model=MODEL,
-        max_tokens=1200,
+        # v14: subido de 1200 a 3000 -- desde que "redundancias" pide
+        # vectores_coincidentes/vectores_diferentes por candidato (mas texto
+        # por candidato que antes), una muestra con muchas coincidencias
+        # podia agotar el limite de tokens a mitad del JSON y devolver un
+        # reporte incompleto (causa real verificada de un KeyError en
+        # produccion: al modelo se le corto la respuesta antes de llegar a
+        # indice_cobertura_nueva_dg). Mas margen reduce el riesgo de corte.
+        max_tokens=3000,
         # OJO: se probo bajar "temperature" a 0 en v14 para reducir la
         # inconsistencia entre corridas, pero la API devolvio error 400
         # ("temperature is deprecated for this model") con claude-sonnet-5 --
@@ -725,6 +740,22 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
     for block in msg.content:
         if block.type == "tool_use":
             reporte = block.input
+            # v14: validar que esten todos los campos obligatorios ANTES de
+            # devolver el reporte. Causa real verificada en produccion: si el
+            # modelo corta la respuesta (por limite de tokens u otro motivo)
+            # y falta un campo, antes esto se colaba como un reporte
+            # "incompleto" hasta la pantalla, donde reventaba con un KeyError
+            # sin control (traceback feo, sin mensaje util). Ahora se detecta
+            # aca, adentro del try/except que ya envuelve esta funcion en la
+            # pantalla principal, y se muestra un mensaje claro en vez de
+            # romper la app.
+            faltantes = [c for c in REQUERIDOS_REPORTE if c not in reporte]
+            if faltantes:
+                raise RuntimeError(
+                    "El modelo devolvio un reporte incompleto (faltan: "
+                    f"{', '.join(faltantes)}). Puede haberse cortado por longitud -- "
+                    "proba analizar la muestra de nuevo."
+                )
             # Filtro duro (v13): el prompt le pide al modelo no incluir nada
             # por debajo de UMBRAL_REDUNDANCIA, pero es solo una instruccion de
             # texto -- se vio en un caso real que el modelo igual incluyo
@@ -783,11 +814,17 @@ with col_reset2:
         st.session_state.reset_ctr += 1
         st.rerun()
 
-foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}",
-                        resolution="1080p")
-if foto is None:
-    foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"],
-                             key=f"upload_{st.session_state.reset_ctr}")
+
+# v14: se saco st.camera_input (la camara "en vivo" embebida en la pagina) --
+# a pedido de Alan, y porque ademas explica una falla real: esa camara
+# embebida depende de una API del navegador (getUserMedia) que varios
+# navegadores "en app" (ej. el navegador interno de WhatsApp, como en el
+# caso donde fallo) restringen o bloquean. Con un solo st.file_uploader, el
+# celular/tablet/compu abre su selector nativo de siempre (el mismo cartel
+# de "Tomar foto / Elegir de la galeria / Explorar archivos" que ya usan
+# para adjuntar en cualquier otra app), que es mucho mas compatible.
+foto = st.file_uploader("Tomá o subí una foto de la muestra", type=["jpg", "jpeg", "png"],
+                         key=f"upload_{st.session_state.reset_ctr}")
 
 if foto is not None:
     pil_img = ImageOps.exif_transpose(Image.open(foto))  # corrige fotos de celular
