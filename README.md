@@ -1,4 +1,4 @@
-# Radar DG — guía de puesta en marcha (v10)
+# Radar DG — guía de puesta en marcha (v11)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
@@ -7,6 +7,33 @@ programar para seguir estos pasos, solo ir uno por uno.
 **Si ya tenías una versión anterior desplegada:** solo necesitás repetir el
 Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
 Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
+
+**Novedades de v11 — inconsistencia entre fotos + cámara:**
+- Causa encontrada de la inconsistencia: el recorte de fondo de la v10
+  asumía fondo BLANCO. En una foto de feria real (mesa, mostrador, piso —
+  casi nunca blanco puro) ese recorte no recortaba nada, y el resultado
+  terminaba dependiendo del fondo de cada foto en vez de solo del zapato —
+  por eso la misma muestra fotografiada varias veces daba respuestas
+  distintas. Ahora el recorte estima el color de fondo mirando los bordes de
+  la foto (no asume que sea blanco), así que funciona con cualquier fondo
+  razonablemente parejo.
+- Se corrigió también un problema de fotos de celular que vienen "giradas"
+  en los metadatos (EXIF) — ya se corrige automáticamente.
+- Se subió el número de candidatos que se comparan (de 8 a 12) como margen
+  extra de seguridad.
+- Cámara: ahora pide mejor resolución, y si cuesta encuadrar el zapato
+  completo hay un aviso invitando a usar "Subí una foto" (abre la cámara
+  normal del celular, con zoom y encuadre libres, en vez de la cámara
+  integrada de la página que viene más limitada). También se agregó un tip
+  de "fondo liso, buena luz, zapato ocupando la mayor parte del cuadro", que
+  ayuda mucho a la precisión.
+- **Importante:** un fondo muy distinto al de las fotos de estudio (una mesa
+  con textura, otros productos alrededor, una mano tapando parte del
+  zapato) sigue siendo el escenario más difícil para este método. Si notás
+  que sigue fallando en casos puntuales (como la zapatilla negra que
+  comentaste), mandame esa foto para seguir afinando con datos reales —
+  es la forma más rápida de encontrar la causa exacta, como pasó con el
+  caso D17240011620.
 
 **Novedades de v10 — segundo bug real corregido (el del SKU D17240011620):**
 - Confirmaste que ese tenis SÍ estaba en el catálogo y la foto que subiste

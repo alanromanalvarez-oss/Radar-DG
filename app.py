@@ -27,15 +27,19 @@ import datetime as dt
 
 import streamlit as st
 import numpy as np
-from PIL import Image
+from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
 MODEL = "claude-sonnet-5"
-N_CANDIDATOS = 8           # cuantos SKUs se preseleccionan por hash (forma+color) como
+N_CANDIDATOS = 12          # cuantos SKUs se preseleccionan por hash (forma+color) como
                            # "base" antes de expandir con su familia de colores (ver
                            # preseleccionar_candidatos). Se busca en TODO el catalogo, no
-                           # solo dentro de una categoria elegida a mano.
+                           # solo dentro de una categoria elegida a mano. Subido de 8 a 12
+                           # como margen extra de seguridad: el hash de imagen no es
+                           # perfecto (fotos de feria con distinto fondo/luz/angulo que las
+                           # de estudio), asi que un colchon mas ancho reduce el riesgo de
+                           # que un match real quede afuera por poco.
 MAX_POR_FAMILIA_DE_COLOR = 6   # de cada candidato base, cuantos "hermanos" del mismo
                                # modelo en otro color se suman igual (verificado con
                                # datos reales: sube de encontrar ~48% a ~75% de las
@@ -176,34 +180,45 @@ def marcar_comprada_en_sheet(fila_id: str):
 ANGULOS_ROTACION = (-15, -10, -5, 0, 5, 10, 15)  # ver foto_a_hashes_multi
 
 
-def auto_crop_contenido(im: Image.Image, umbral=245, margen_pct=0.04):
+def auto_crop_contenido(im: Image.Image, margen_pct=0.04, umbral_dist=28, franja_borde_pct=0.03):
     """Recorta la imagen a la zona donde hay 'producto' (descarta el margen
-    blanco/fondo alrededor).
+    de fondo alrededor) -- SIN asumir que el fondo es blanco.
 
     Por que: se detecto un segundo caso real (SKU D17240011620, foto subida
     por Alan) donde el zapato SI estaba en el catalogo y la foto nueva NO
     estaba rotada, pero seguia sin aparecer como coincidencia (quedaba en el
     puesto #161 de 1527). La causa: la foto nueva tenia mucho mas margen
-    blanco alrededor del zapato que la foto del catalogo (el zapato se veia
-    mas chico dentro del cuadro) -- el hash perceptual compara la imagen
-    completa, asi que ese 'zoom' distinto alcanzaba para desviar bastante la
-    comparacion aunque el zapato fuera identico. Recortando ambas fotos a su
-    contenido real antes de hashear (sin el margen blanco), la distancia bajo
-    de 124 a 40 y el SKU correcto volvio al puesto #1. Este recorte se aplica
-    tanto a la foto nueva como al catalogo (ver recalcular_hashes_autocrop.py
-    para el catalogo)."""
-    arr = np.array(im.convert("RGB"))
-    no_fondo = np.any(arr < umbral, axis=2)
-    ys, xs = np.where(no_fondo)
+    blanco alrededor del zapato que la foto del catalogo -- el hash
+    perceptual compara la imagen completa, asi que ese 'zoom' distinto
+    desviaba la comparacion aunque el zapato fuera identico.
+
+    La primera version de este recorte asumia fondo blanco (umbral fijo).
+    Se detecto que eso fallaba en fotos de feria con fondo de mesa/mostrador
+    (no blanco): el recorte no recortaba nada, y las fotos de un mismo
+    zapato con distinto fondo daban resultados inconsistentes. Ahora se
+    estima el color de fondo a partir de una franja fina en los bordes de
+    la foto (ahi casi siempre hay fondo, no producto) y se recorta segun que
+    tan lejos esta cada pixel de ESE color -- funciona con cualquier color
+    de fondo, no solo blanco."""
+    arr = np.array(im.convert("RGB")).astype(np.int16)
+    h, w = arr.shape[:2]
+    fb = max(2, int(min(h, w) * franja_borde_pct))
+    borde = np.concatenate([
+        arr[:fb, :, :].reshape(-1, 3), arr[-fb:, :, :].reshape(-1, 3),
+        arr[:, :fb, :].reshape(-1, 3), arr[:, -fb:, :].reshape(-1, 3),
+    ])
+    color_fondo = np.median(borde, axis=0)
+    dist_al_fondo = np.sqrt(((arr - color_fondo) ** 2).sum(axis=2))
+    contenido = dist_al_fondo > umbral_dist
+    ys, xs = np.where(contenido)
     if len(xs) == 0:
-        return im
-    w, h = im.size
+        return im.convert("RGB")
     mx, my = int(w * margen_pct), int(h * margen_pct)
     x0 = max(0, xs.min() - mx)
     y0 = max(0, ys.min() - my)
     x1 = min(w, xs.max() + mx)
     y1 = min(h, ys.max() + my)
-    return im.crop((x0, y0, x1, y1))
+    return im.convert("RGB").crop((x0, y0, x1, y1))
 
 
 def foto_a_hashes(pil_img: Image.Image):
@@ -552,6 +567,9 @@ if not sheets_disponible():
     st.info("La base compartida (Google Sheets) todavía no está conectada — cada análisis "
              "solo queda en este celular por ahora. Ver README para conectarla.")
 
+st.caption("📸 Para que el radar compare mejor: fondo liso (mesa, piso, una hoja "
+           "blanca), buena luz, zapato de perfil ocupando la mayor parte del cuadro.")
+
 if "reset_ctr" not in st.session_state:
     st.session_state.reset_ctr = 0
 
@@ -561,13 +579,20 @@ with col_reset2:
         st.session_state.reset_ctr += 1
         st.rerun()
 
-foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}")
+foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}",
+                        resolution="1080p")
+st.caption("💡 ¿Te tenés que alejar mucho para que entre el zapato completo? Usá "
+           "'Subí una foto' de abajo: abre la cámara normal del celular, con zoom y "
+           "encuadre libres — después la elegís de tu galería.")
 if foto is None:
     foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"],
                              key=f"upload_{st.session_state.reset_ctr}")
 
 if foto is not None:
-    pil_img = Image.open(foto)
+    pil_img = ImageOps.exif_transpose(Image.open(foto))  # corrige fotos de celular
+                                                          # que vienen "acostadas" en
+                                                          # los bytes con un dato de
+                                                          # rotacion en el EXIF
     with st.spinner("Analizando..."):
         hashes_nuevos = foto_a_hashes_multi(pil_img)
         candidatos = preseleccionar_candidatos(hashes_nuevos)
