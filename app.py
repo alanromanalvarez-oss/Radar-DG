@@ -76,6 +76,18 @@ def cargar_ddg():
         return json.load(f)
 
 
+@st.cache_data
+def logo_base64():
+    """Logo de Dorothy Gaynor (wordmark blanco sobre fondo transparente) --
+    se muestra sobre una franja oscura porque en blanco no se ve (el PNG es
+    letras blancas con fondo transparente, pensado para fondo oscuro)."""
+    try:
+        with open("logo_dg.png", "rb") as f:
+            return base64.b64encode(f.read()).decode()
+    except FileNotFoundError:
+        return None
+
+
 def get_anthropic_client():
     api_key = st.secrets.get("ANTHROPIC_API_KEY", None)
     if not api_key:
@@ -445,8 +457,26 @@ def fmt_moneda(v):
 # ------------------------------------------------------------------
 # Interfaz
 # ------------------------------------------------------------------
-st.title("🧭 Radar DG")
-st.caption("Dorothy Gaynor · foto → ¿tengo algo así o es un hueco? Rápido y concreto.")
+_logo = logo_base64()
+if _logo:
+    st.markdown(
+        f"""
+        <div style="background:#1A1A1A; margin:-1rem -1rem 1.2rem -1rem; padding:22px 16px;
+                    text-align:center; border-bottom:3px solid #9C6B3E;">
+            <img src="data:image/png;base64,{_logo}" style="max-width:100%; height:38px;" />
+        </div>
+        """,
+        unsafe_allow_html=True,
+    )
+else:
+    st.title("Dorothy Gaynor")
+
+st.markdown(
+    "<p style='margin-top:-0.6rem; color:#9C6B3E; font-weight:600; letter-spacing:0.04em;'>"
+    "🧭 RADAR DG</p>",
+    unsafe_allow_html=True,
+)
+st.caption("Foto → ¿tengo algo así o es un hueco? Rápido y concreto.")
 
 if not sheets_disponible():
     st.info("La base compartida (Google Sheets) todavía no está conectada — cada análisis "
@@ -462,9 +492,6 @@ with col_reset2:
         st.rerun()
 
 foto = st.camera_input("Tomá la foto de la muestra", key=f"camara_{st.session_state.reset_ctr}")
-st.caption("¿No aparece el botón para cambiar a la cámara trasera? Usá 'Subí una foto' de "
-           "abajo y elegí la opción de cámara de tu celular/tablet — esa sí te deja elegir "
-           "cuál cámara usar.")
 if foto is None:
     foto = st.file_uploader("...o subí una foto", type=["jpg", "jpeg", "png"],
                              key=f"upload_{st.session_state.reset_ctr}")

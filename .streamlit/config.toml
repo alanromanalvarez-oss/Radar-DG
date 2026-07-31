@@ -1,0 +1,10 @@
+# Paleta pensada para acompañar el isologo de Dorothy Gaynor (wordmark blanco,
+# minimalista). Este archivo SI se sube a GitHub (a diferencia de secrets.toml,
+# no tiene ninguna clave adentro) -- Streamlit Cloud lo toma solo.
+[theme]
+base = "light"
+primaryColor = "#9C6B3E"           # camel/cognac -- guiño al cuero, acompaña un logo blanco/negro sin competir con el
+backgroundColor = "#FAF8F5"        # blanco cálido
+secondaryBackgroundColor = "#EFEAE3"  # gris cálido (sidebar, inputs)
+textColor = "#1A1A1A"              # casi negro, mismo tono que el logo
+font = "sans serif"

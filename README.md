@@ -1,4 +1,4 @@
-# Radar DG — guía de puesta en marcha (v7)
+# Radar DG — guía de puesta en marcha (v8)
 
 Esta carpeta tiene todo lo necesario para publicar Radar DG como un link que
 tus compradores abren desde el celular en SAPICA. No hace falta saber
@@ -7,6 +7,18 @@ programar para seguir estos pasos, solo ir uno por uno.
 **Si ya tenías una versión anterior desplegada:** solo necesitás repetir el
 Paso 2 (subir estos archivos nuevos a GitHub) — no hace falta rehacer
 Anthropic, Streamlit Cloud ni Google Sheets, siguen funcionando igual.
+
+**Novedades de v8:**
+- Se integró el logo de Dorothy Gaynor arriba de todo, sobre una franja
+  oscura (el logo es blanco, por eso necesita fondo oscuro para verse) con
+  un filo camel/cognac abajo.
+- Se cambió la paleta de toda la app para acompañar el logo: fondo blanco
+  cálido, texto casi negro (mismo tono que el logo) y un acento camel/cognac
+  (guiño al cuero) en botones, links y algunos textos — configurado en
+  `.streamlit/config.toml`, que ahora también se sube a GitHub (no tiene
+  ninguna clave adentro, a diferencia de `secrets.toml`).
+- Se sacó el aviso de "¿No aparece el botón para cambiar a la cámara
+  trasera?" debajo de la foto — quedaba de más.
 
 **Novedades de v7:**
 - Se sumaron valores de referencia de "Bota" al DDG (silueta ahora distingue
@@ -51,6 +63,8 @@ Qué hay en la carpeta:
 | `sumar_presapica.py` | Suma China SS27 + Presapica + PRESS27 desde Base Presapica.xlsx |
 | `agregar_compras_previas.py` | Para sumar fotos de compras ya hechas, organizadas en carpetas |
 | `requirements.txt` | Lista de librerías que necesita la app |
+| `logo_dg.png` | El logo de Dorothy Gaynor que se muestra arriba de todo |
+| `.streamlit/config.toml` | Paleta de colores de la app (se sube a GitHub, no tiene claves) |
 
 ---
 
