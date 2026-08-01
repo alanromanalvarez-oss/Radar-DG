@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v17
+Radar DG - app para compradores en feria (ej. SAPICA) -- v18
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,12 +31,18 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v17"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v18"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
 
-MODEL = "claude-sonnet-5"
+MODEL = "claude-opus-5"  # v18: cambiado de claude-sonnet-5 a pedido de Alan, para
+                         # probar si el modelo mas capaz de la familia mejora la
+                         # precision del razonamiento (categoria/silueta/estructura)
+                         # -- mas lento y mas caro por analisis que sonnet-5, pero
+                         # en una decision de compra la precision pesa mas que medio
+                         # segundo de espera. Si hace falta volver a sonnet-5 por
+                         # velocidad/costo, alcanza con cambiar esta linea.
 N_CANDIDATOS = 12          # cuantos SKUs se preseleccionan por hash (forma+color) como
                            # "base" antes de expandir con su familia de colores (ver
                            # preseleccionar_candidatos). Se busca en TODO el catalogo, no

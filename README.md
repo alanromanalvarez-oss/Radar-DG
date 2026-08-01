@@ -1,4 +1,17 @@
-# Radar DG — guía de puesta en marcha (v17)
+# Radar DG — guía de puesta en marcha (v18)
+
+**Novedades de v18 — cambio de modelo de IA:**
+- Se cambió el modelo que analiza las fotos de `claude-sonnet-5` a
+  `claude-opus-5` (variable `MODEL` en `app.py`), a pedido tuyo, para probar
+  si el modelo más capaz de la familia razona mejor las reglas de
+  categoría/silueta/estructura. Es más lento y más caro por análisis que
+  sonnet-5 -- probalo en la feria y contame si notás mejor precisión y si la
+  espera se siente razonable. Si hace falta volver a sonnet-5 por velocidad
+  o costo, es cambiar esa única línea.
+- El script de clasificación del catálogo completo (`clasificar_catalogo_con_ddg.py`,
+  para cuando decidas correr la Etapa A) sigue usando `claude-sonnet-5` --
+  no lo cambié porque ahí sí importa mucho el costo (son ~1,527 llamadas de
+  una sola vez). Avisame si también querés esa parte con Opus.
 
 **Novedades de v17 — fix de incoherencia en "Otros parecidos":**
 - Caso real reportado: un mocasín mostraba tenis y sandalias como
