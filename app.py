@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v16
+Radar DG - app para compradores en feria (ej. SAPICA) -- v17
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v16"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v17"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -912,17 +912,28 @@ if foto is not None:
     # para decidir si comprar o no, pero deja afuera items que el comprador
     # igual quiere VER para tener contexto. Esta seccion muestra el resto de
     # los candidatos ya preseleccionados (los mismos que ya se buscaron por
-    # hash + vector DDG), SIN el filtro duro, para recuperar esa vista
-    # amplia -- son informativos, no pasaron por la validacion estricta de
-    # la IA como "Coincidencias" si.
+    # hash + vector DDG), para recuperar esa vista amplia -- son
+    # informativos, no pasaron por la validacion estricta de la IA como
+    # "Coincidencias" si.
+    #
+    # v17: se agrego un filtro de CATEGORIA (caso real reportado por Alan: un
+    # mocasin mostraba tenis y sandalias como "parecidos", y una sandalia
+    # mostraba choclos/confort/ugg -- la huella de imagen (phash/color) no
+    # entiende que es un zapato, solo mide parecido de pixeles/forma/color,
+    # asi que sin ningun filtro podia agrupar categorias totalmente distintas
+    # que compartian fondo/iluminacion/silueta general en la foto). No se
+    # exige silueta/tacon/punta igual (eso lo sigue reservando "Coincidencias"
+    # para la recomendacion de compra) -- solo que sea la MISMA categoria, el
+    # filtro minimo para que la lista siga siendo util como contexto.
     redund_skus = {r["sku"] for r in redund}
-    otros = [c for c in candidatos if c["sku"] not in redund_skus]
+    otros = [c for c in candidatos
+             if c["sku"] not in redund_skus and c.get("categoria") == categoria]
     otros.sort(key=lambda c: c.get("_dist", 200))
     otros = otros[:10]
     if otros:
         st.markdown("---")
-        st.markdown(f"**Otros parecidos en el catálogo** ({len(otros)}, no confirmados como "
-                    "coincidencia por la IA -- para que los tengas en cuenta igual):")
+        st.markdown(f"**Otros {categoria.lower()} parecidos en el catálogo** ({len(otros)}, no "
+                    "confirmados como coincidencia por la IA -- para que los tengas en cuenta igual):")
         for c in otros:
             cols = st.columns([1, 4])
             with cols[0]:

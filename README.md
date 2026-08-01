@@ -1,4 +1,19 @@
-# Radar DG — guía de puesta en marcha (v16)
+# Radar DG — guía de puesta en marcha (v17)
+
+**Novedades de v17 — fix de incoherencia en "Otros parecidos":**
+- Caso real reportado: un mocasín mostraba tenis y sandalias como
+  "parecidos", y una sandalia mostraba choclos/confort/ugg. Causa: esa
+  sección (agregada en v15 para mostrar más opciones que "Coincidencias")
+  no tenía NINGÚN filtro -- se armaba puramente con la huella de imagen
+  (phash/color), que no entiende qué es un zapato, solo mide parecido de
+  píxeles/forma/color, así que podía agrupar categorías totalmente
+  distintas que comparten fondo/iluminación/silueta general en la foto.
+- Se agregó un filtro de categoría: "Otros parecidos" ahora solo muestra
+  candidatos de la MISMA categoría que identificó la IA (no exige silueta/
+  tacón/punta igual -- eso lo sigue reservando "Coincidencias" para la
+  recomendación de compra). Es el filtro mínimo para que la lista siga
+  siendo útil como contexto sin mostrar cosas que ningún comprador
+  consideraría parecidas.
 
 **Novedades de v16 — fotos de mejor resolución para los items de la Base Presapica:**
 - Nuevo script `reemplazar_fotos_alta_res.py`: reemplaza la miniatura
