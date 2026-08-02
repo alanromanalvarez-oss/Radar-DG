@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v18
+Radar DG - app para compradores en feria (ej. SAPICA) -- v23
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v18"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v23"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.

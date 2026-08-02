@@ -1,4 +1,12 @@
-# Radar DG — guía de puesta en marcha (v18)
+# Radar DG — guía de puesta en marcha (v23)
+
+**Novedades de v23:**
+- Número de versión actualizado a v23 (a pedido de Alan). No hay cambios de
+  lógica respecto de v18 + el hotfix del script de clasificación: incluye el
+  filtro de categoría en "Otros parecidos" (v17), el modelo `claude-opus-5`
+  para el análisis (v18), y el script `clasificar_catalogo_con_ddg.py` con
+  salida en UTF-8 y detalle completo del primer error para diagnosticar el
+  problema de codificación que salió al correrlo en Windows.
 
 **Novedades de v18 — cambio de modelo de IA:**
 - Se cambió el modelo que analiza las fotos de `claude-sonnet-5` a
