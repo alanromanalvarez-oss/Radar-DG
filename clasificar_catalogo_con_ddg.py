@@ -106,6 +106,16 @@ def main():
     ap.add_argument("--end", type=int, default=None, help="indice de fin (exclusivo)")
     args = ap.parse_args()
 
+    # En Windows la consola puede venir con una codificacion vieja (cp1252 o
+    # incluso ascii). Como los nombres de categoria tienen acentos ("Botín",
+    # "Mocasín"), imprimirlos podia tirar un UnicodeEncodeError que no tiene
+    # nada que ver con la clasificacion en si. Forzamos UTF-8 en la salida.
+    try:
+        sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+        sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+    except Exception:
+        pass
+
     with open(args.catalogo, encoding="utf-8") as f:
         catalogo = json.load(f)
     with open(args.ddg, encoding="utf-8") as f:
@@ -171,6 +181,15 @@ def main():
         except Exception as e:
             print(f"  [{i+1}/{len(tanda)}] {r['sku']}: ERROR -- {e}")
             errores += 1
+            # La PRIMERA vez que falla, imprimir el traceback completo. Sin esto
+            # solo se ve el mensaje final del error (ej. "'ascii' codec can't
+            # encode...") sin saber en que linea ni en que capa se origino, que
+            # es justo lo que hace falta para diagnosticarlo.
+            if errores == 1:
+                import traceback
+                print("\n--- Detalle del primer error (para diagnostico) ---")
+                traceback.print_exc()
+                print("--- fin del detalle ---\n")
 
         if (i + 1) % 25 == 0:
             with open(args.catalogo, "w", encoding="utf-8") as f:
