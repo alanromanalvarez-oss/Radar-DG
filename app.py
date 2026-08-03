@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v23
+Radar DG - app para compradores en feria (ej. SAPICA) -- v24
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v23"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v24"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -356,6 +356,58 @@ def _grupo(dimension: str, valor: str):
     return DDG.get("dimensiones", {}).get(dimension, {}).get("grupo_estructural", {}).get(valor)
 
 
+def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=60):
+    """v24: trae los N productos de UNA categoria concreta que mas se parecen
+    a la muestra nueva.
+
+    Para que sirve: el comprador puede forzar la categoria desde la pantalla
+    ("analizala como Flat") cuando ve que la IA la interpreto distinto. Caso
+    real que motivo esto: un mocasin tipo boat shoe que el catalogo tiene
+    cargado como "Flat" pero que la IA (con razon) lee como "Mocasin" -- son
+    dos lecturas defendibles del mismo zapato, y mientras no coincidan, el
+    producto correcto no entra nunca en la comparacion. Por eso mira tanto
+    categoria_ia (la que asigno la IA al catalogo, si ya se corrio
+    clasificar_catalogo_con_ddg.py) como la categoria original del catalogo.
+
+    Ordenamiento (importante, verificado con un caso real): NO alcanza con
+    ordenar la categoria por parecido de imagen y cortar los primeros. En ese
+    mismo caso, dentro de "Flat" (147 productos) el correcto quedaba en el
+    puesto 48 por hash -- con una lista corta se perdia igual, aunque el
+    comprador hubiera acertado la categoria. Por eso van primero los que
+    ademas coinciden en silueta/altura segun el vector DDG del catalogo (dato
+    estructurado, no depende de los pixeles), y recien despues se completa con
+    el resto de la categoria ordenado por imagen."""
+    if not categoria:
+        return []
+    vec_nuevo = (vector_nuevo or {}).get("vector_dg", {})
+    silueta_grupo_nuevo = _grupo("silueta", vec_nuevo.get("silueta"))
+    altura_grupo_nuevo = _grupo("altura", vec_nuevo.get("altura"))
+
+    prioritarios, resto = [], []
+    for r in CATALOGO:
+        if not r.get("phash") or not r.get("colorhash"):
+            continue
+        if r.get("categoria_ia") != categoria and r.get("categoria") != categoria:
+            continue
+        r = dict(r)
+        r["_dist"] = distancia_multi(hashes_nuevos, r["phash"], r["colorhash"])
+        r["match_categoria_forzada"] = True
+
+        vec_cat = r.get("vector_dg_ia") or {}
+        coincide_vector = (
+            bool(vec_cat)
+            and silueta_grupo_nuevo is not None
+            and silueta_grupo_nuevo == _grupo("silueta", vec_cat.get("silueta"))
+            and altura_grupo_nuevo is not None
+            and altura_grupo_nuevo == _grupo("altura", vec_cat.get("altura"))
+        )
+        (prioritarios if coincide_vector else resto).append(r)
+
+    prioritarios.sort(key=lambda r: r["_dist"])
+    resto.sort(key=lambda r: r["_dist"])
+    return (prioritarios + resto)[:n]
+
+
 def candidatos_por_vector_ddg(vector_nuevo: dict, n_tier1=20, n_tier2=10):
     """Etapa A 'a la Tono' (v13): en vez de depender solo del hash de imagen
     (que a veces confunde siluetas distintas por parecido de fondo/luz/angulo
@@ -407,8 +459,8 @@ def candidatos_por_vector_ddg(vector_nuevo: dict, n_tier1=20, n_tier2=10):
     return out
 
 
-def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, n=N_CANDIDATOS,
-                               max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
+def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, categoria_forzada=None,
+                               n=N_CANDIDATOS, max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
     """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
     le pide categoria al comprador -- la IA la identifica sola a partir de la
     foto). Ojo: algunos registros (ej. PRESS27, SKUs nuevos sin foto todavia)
@@ -456,6 +508,16 @@ def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, n=N_CANDIDATOS,
     # esta clasificado (clasificar_catalogo_con_ddg.py no corrido) esto no
     # agrega nada y la app sigue igual que antes.
     for r in candidatos_por_vector_ddg(vector_nuevo):
+        if r["sku"] not in vistos:
+            vistos.add(r["sku"])
+            expandido.append(r)
+
+    # v24: si el comprador forzo una categoria desde la pantalla, sumamos los
+    # mas parecidos por imagen DENTRO de esa categoria. Va al final a
+    # proposito: suma, no reemplaza -- si la categoria forzada era la correcta
+    # estos van a ser los candidatos buenos, y si no, no se pierde nada de lo
+    # que ya se habia encontrado.
+    for r in candidatos_de_categoria(hashes_nuevos, categoria_forzada, vector_nuevo=vector_nuevo):
         if r["sku"] not in vistos:
             vistos.add(r["sku"])
             expandido.append(r)
@@ -699,10 +761,22 @@ def image_block(pil_img: Image.Image, max_side=512):
     return {"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": b64}}
 
 
-def analizar(client, foto_nueva: Image.Image, candidatos: list):
+def analizar(client, foto_nueva: Image.Image, candidatos: list, categoria_forzada=None):
+    if categoria_forzada:
+        texto_foto = (
+            "Foto de la muestra nueva. IMPORTANTE: el comprador reviso el analisis anterior "
+            f"y CORRIGIO la categoria a mano -- dice que esta muestra es un/una "
+            f"'{categoria_forzada}'. Tomá esa categoria como la correcta (poné exactamente ese "
+            "valor en categoria_identificada) y evalua las coincidencias desde esa lectura. El "
+            "comprador tiene la muestra fisica en la mano, asi que su lectura vale mas que la "
+            "tuya sobre una foto; si aun asi la foto te parece claramente otra cosa, aclaralo en "
+            "una frase corta en el campo motivo, pero respeta igual la categoria que indico."
+        )
+    else:
+        texto_foto = ("Foto de la muestra nueva (identifica vos la categoria por la silueta, "
+                      "no fue elegida por el comprador):")
     content = [
-        {"type": "text", "text": "Foto de la muestra nueva (identifica vos la categoria por la silueta, "
-                                  "no fue elegida por el comprador):"},
+        {"type": "text", "text": texto_foto},
         image_block(foto_nueva),
         {"type": "text", "text": f"Candidatos preseleccionados ({len(candidatos)}) buscando en TODO el "
                                   "catalogo, del mas al menos parecido por forma/color (pueden incluir "
@@ -719,6 +793,9 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list):
         if c.get("match_vector_ddg"):
             etiqueta += (" | COINCIDE EN CATEGORIA+SILUETA(+ALTURA) segun el DDG "
                          "(dato estructurado, preseleccionado por vector, no solo por parecido de imagen)")
+        if c.get("match_categoria_forzada"):
+            etiqueta += (f" | ES DE LA CATEGORIA '{categoria_forzada}' que indico el comprador "
+                         "(traido especificamente por esa correccion -- prestale atencion particular)")
         content.append({"type": "text", "text": etiqueta})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": c["thumb_b64"]}})
 
@@ -818,11 +895,14 @@ if not sheets_disponible():
 
 if "reset_ctr" not in st.session_state:
     st.session_state.reset_ctr = 0
+if "categoria_forzada" not in st.session_state:
+    st.session_state.categoria_forzada = None
 
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
     if st.button("🔄 Analizar otra"):
         st.session_state.reset_ctr += 1
+        st.session_state.categoria_forzada = None  # empezar limpio con la muestra nueva
         st.rerun()
 
 
@@ -852,9 +932,11 @@ if foto is not None:
         # catalogo no esta clasificado todavia, no aporta nada y sigue con hash
         # solo, como antes.
         vector_nuevo = clasificar_foto_nueva(client, pil_img)
-        candidatos = preseleccionar_candidatos(hashes_nuevos, vector_nuevo=vector_nuevo)
+        cat_forzada = st.session_state.categoria_forzada
+        candidatos = preseleccionar_candidatos(hashes_nuevos, vector_nuevo=vector_nuevo,
+                                                categoria_forzada=cat_forzada)
         try:
-            reporte = analizar(client, pil_img, candidatos)
+            reporte = analizar(client, pil_img, candidatos, categoria_forzada=cat_forzada)
         except Exception as e:
             st.error(f"No se pudo generar el reporte: {e}")
             st.stop()
@@ -871,9 +953,35 @@ if foto is not None:
     st.image(pil_img, width=220)
     if categoria:
         etiqueta_cat = f"Categoría identificada: **{categoria}**"
+        if st.session_state.categoria_forzada:
+            etiqueta_cat = f"Categoría **{categoria}** (corregida por vos)"
         if categoria in DDG.get("categorias_sin_definir_en_ddg", []):
             etiqueta_cat += " ⚠️ (todavía no tiene valores de referencia en el DDG)"
         st.caption(etiqueta_cat)
+
+    # v24 (pedido de Alan): si el comprador ve que la categoria no es la que
+    # el interpreta, puede corregirla y volver a analizar con esa lectura. Es
+    # la salida para los casos genuinamente ambiguos -- caso real: un mocasin
+    # tipo boat shoe que el catalogo tiene como "Flat" y la IA lee como
+    # "Mocasin"; ninguna de las dos esta mal, pero mientras no coincidan, el
+    # producto correcto no entra en la comparacion. El comprador tiene la
+    # muestra fisica en la mano: su lectura desempata.
+    with st.expander("¿La categoría no es la correcta? Analizar como otra"):
+        opciones = [c for c in CATEGORIAS_VALIDAS if c != categoria]
+        col_cat, col_btn = st.columns([2, 1])
+        with col_cat:
+            nueva_cat = st.selectbox("Analizar como:", opciones,
+                                      key=f"selcat_{st.session_state.reset_ctr}",
+                                      label_visibility="collapsed")
+        with col_btn:
+            if st.button("Volver a analizar", key=f"btncat_{st.session_state.reset_ctr}"):
+                st.session_state.categoria_forzada = nueva_cat
+                st.rerun()
+        if st.session_state.categoria_forzada:
+            if st.button("↩︎ Volver a la categoría automática",
+                          key=f"btncatreset_{st.session_state.reset_ctr}"):
+                st.session_state.categoria_forzada = None
+                st.rerun()
 
     if cobertura >= 60:
         st.success(f"**HUECO REAL — {texto_reco}**  ·  Cobertura nueva: {cobertura}/100  ·  Similitud: {reporte['indice_similitud_dg']}/100")

@@ -1,4 +1,33 @@
-# Radar DG — guía de puesta en marcha (v23)
+# Radar DG — guía de puesta en marcha (v24)
+
+**Novedades de v24 — corregir la categoría a mano y volver a analizar:**
+- Debajo del resultado hay un desplegable **"¿La categoría no es la correcta?
+  Analizar como otra"**: elegís la categoría que vos ves y le das a "Volver a
+  analizar". La app rehace el análisis tomando esa categoría como la correcta
+  y trae candidatos específicamente de ahí. Hay también un botón para volver
+  a la categoría automática.
+- Por qué hacía falta: el caso del boat shoe café. El catálogo lo tiene
+  cargado como **"Flat"** y la IA lo lee como **"Mocasín"** — ninguna de las
+  dos lecturas está mal, pero mientras no coincidan, el producto correcto no
+  entra nunca en la comparación. El comprador tiene la muestra física en la
+  mano, así que su lectura desempata.
+- Detalle técnico que se verificó y corrigió sobre la marcha: la primera
+  versión de esto traía los 18 más parecidos por imagen dentro de la
+  categoría, y **no alcanzaba** — midiéndolo con el caso real, CAMIDY 1
+  quedaba en el puesto 48 dentro de "Flat" (147 productos), así que se
+  perdía igual aunque el comprador acertara la categoría. Se subió a 60 y se
+  cambió el orden: primero los que además coinciden en silueta/altura según
+  el vector DDG del catálogo (dato estructurado, no depende de los píxeles),
+  después el resto por parecido de imagen. Con eso, en la prueba local
+  CAMIDY 1 sí entra.
+- **Lo que NO pude verificar:** el catálogo ya clasificado (`catalog_index.json`
+  con `categoria_ia`/`vector_dg_ia`, que corriste vos) está en tu máquina, no
+  acá — así que probé la corrección con el catálogo sin clasificar, que es el
+  peor escenario. Con el tuyo ya clasificado debería funcionar mejor todavía,
+  pero conviene que lo confirmes con la foto real del mocasín café. Si querés
+  que lo verifique yo, copiá `catalog_index.json` a la carpeta PRESELECCIONADO.
+
+
 
 **Novedades de v23:**
 - Número de versión actualizado a v23 (a pedido de Alan). No hay cambios de
