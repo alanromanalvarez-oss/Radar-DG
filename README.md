@@ -1,4 +1,90 @@
-# Radar DG — guía de puesta en marcha (v24)
+# Radar DG — guía de puesta en marcha (v25)
+
+**Novedades de v25 — búsqueda visual por embeddings + las 4 vistas por SKU**
+
+Esto ataca de raíz el problema que venimos persiguiendo hace varias versiones:
+la app encontraba el producto si le pegabas la foto del catálogo, pero no si
+sacabas la foto real. Medido con datos reales: el mismo zapato pasaba del
+puesto #1 al #374 de 1527 solo por cambiar fondo, luz y ángulo.
+
+**Qué cambia.** El motor de preselección deja de depender del "hash" de
+imagen (que compara patrones de píxeles) y pasa a usar *embeddings*: un modelo
+convierte cada foto en una lista de números que representa **cómo se ve** el
+zapato. Dos zapatos de silueta parecida quedan cerca aunque cambien fondo, luz
+y ángulo. El hash sigue ahí abajo como red de seguridad, y el DDG y todo el
+resto del análisis quedan exactamente igual.
+
+**Y ahora son 4 fotos por producto.** El Excel `Modelos con inventario mayor a
+100_URL_VISTAS.xlsx` trae 4 ángulos por SKU (1,324 × 4 = 5,296 fotos). Antes
+había una sola foto por producto, sacada del PDF. Con 4 ángulos, la foto del
+comprador tiene 4 veces más chances de coincidir con alguna.
+
+**Costo: $0.** Voyage regala 150 mil millones de píxeles por cuenta; las 5,296
+fotos redimensionadas suman ~1,000 millones. El indexado completo y las
+consultas del día a día entran holgados en el tramo gratuito.
+
+**La app funciona igual aunque no hagas nada de esto** — si el índice no
+existe o falta la clave, sigue con la búsqueda por hash de siempre, sin
+romperse. Los pasos de abajo son para activar la mejora.
+
+### Pasos (se corren una sola vez, en tu computadora)
+
+**1. Crear la cuenta de Voyage y sacar la clave.** Entrá a
+`https://dashboard.voyageai.com`, creá la cuenta y generá una API key.
+
+**2. Instalar la librería.** En PowerShell, parado en la carpeta del repo:
+```
+py -m pip install voyageai openpyxl
+```
+
+**3. Cargar la clave** (en la misma ventana de PowerShell):
+```
+$env:VOYAGE_API_KEY = "tu-clave-de-voyage"
+```
+
+**4. Bajar las 4 vistas de cada SKU** (~5,296 fotos, tarda un rato; es
+reanudable, si se corta volvés a correr lo mismo):
+```
+py descargar_vistas.py "Modelos con inventario mayor a 100_URL_VISTAS.xlsx" vistas
+```
+Probá primero con `--sample 20` al final del comando si querés ver que
+funcione antes de bajar todo.
+
+**5. Armar el índice de embeddings** (también reanudable):
+```
+py construir_embeddings.py vistas catalog_index.json embeddings_index.npz
+```
+Igual que antes, podés probar con `--sample 40` primero.
+
+> **Si te da un error de "rate limit / payment method":** es porque la cuenta
+> de Voyage sin método de pago está limitada a 3 llamadas y 10,000 tokens por
+> minuto, y nuestros lotes se pasan de ahí. Dos caminos:
+>
+> - **Recomendado:** cargá un método de pago en `dashboard.voyageai.com`. Los
+>   tokens gratis (150 mil millones de píxeles) se siguen aplicando igual, así
+>   que en la práctica seguís sin pagar — solo desbloqueás la velocidad normal.
+>   Esperá unos minutos a que se actualicen los límites y volvé a correr el
+>   mismo comando.
+> - **Sin tarjeta:** agregá `--gratis` al final del comando. El script se
+>   acomoda solo a esos límites (lotes chicos y pausas). Tarda alrededor de
+>   1.5 horas en vez de 15 minutos, pero es reanudable: podés cortarlo con
+>   Ctrl+C y seguir después con el mismo comando.
+
+**6. Subir el índice.** Hacé commit y push de `embeddings_index.npz` desde
+GitHub Desktop. **No subas la carpeta `vistas`** — pesa mucho y la app no la
+necesita, solo necesita el índice.
+
+**7. Cargar la clave en la app publicada.** En Streamlit Cloud → Settings →
+Secrets, agregá una línea más:
+```
+VOYAGE_API_KEY = "tu-clave-de-voyage"
+```
+
+Listo. A partir de ahí, cada foto que suba un comprador se compara contra el
+índice visual, y los productos que encuentra por esa vía se le marcan a la IA
+como la señal más confiable de la lista.
+
+
 
 **Novedades de v24 — corregir la categoría a mano y volver a analizar:**
 - Debajo del resultado hay un desplegable **"¿La categoría no es la correcta?

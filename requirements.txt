@@ -9,3 +9,4 @@ pypdf>=6.0
 requests>=2.31
 gspread>=6.1
 google-auth>=2.30
+voyageai>=0.3

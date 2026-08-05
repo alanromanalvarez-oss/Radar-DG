@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v24
+Radar DG - app para compradores en feria (ej. SAPICA) -- v25
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v24"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v25"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -56,6 +56,14 @@ MAX_POR_FAMILIA_DE_COLOR = 6   # de cada candidato base, cuantos "hermanos" del 
                                # datos reales: sube de encontrar ~48% a ~75% de las
                                # variantes de color de un mismo modelo)
 UMBRAL_REDUNDANCIA = 40    # % de similitud minimo para mostrar un candidato como match
+
+EMBEDDINGS_PATH = "embeddings_index.npz"   # indice de busqueda visual (opcional)
+MODELO_EMBEDDING = "voyage-multimodal-3.5"
+N_POR_EMBEDDING = 15       # cuantos SKUs trae la busqueda por embeddings. Es la
+                           # via principal cuando el indice existe: a diferencia
+                           # del hash, compara COMO SE VE el zapato, no los
+                           # pixeles, asi que aguanta cambios de fondo, luz y
+                           # angulo (que es donde se perdian los matches reales).
 
 RECOMENDACIONES = {
     "comprar": "🟢 Comprar",
@@ -99,6 +107,28 @@ def cargar_catalogo():
 def cargar_ddg():
     with open("ddg.json", encoding="utf-8") as f:
         return json.load(f)
+
+
+@st.cache_data
+def cargar_indice_embeddings():
+    """v25: indice de busqueda visual por embeddings (ver
+    construir_embeddings.py). Devuelve (skus, matriz_normalizada) o None si el
+    indice todavia no existe -- en ese caso la app sigue funcionando con la
+    busqueda por hash de siempre, sin romperse.
+
+    Cada fila es una FOTO (un SKU puede tener hasta 5: sus 4 vistas del banco
+    de imagenes + la miniatura del catalogo), por eso despues se toma el mejor
+    puntaje por SKU (ver candidatos_por_embedding)."""
+    try:
+        d = np.load(EMBEDDINGS_PATH, allow_pickle=True)
+    except Exception:
+        return None
+    claves = [str(k) for k in d["claves"]]
+    skus = np.array([k.split("__")[0] for k in claves])
+    M = np.asarray(d["vectores"], dtype=np.float32)
+    normas = np.linalg.norm(M, axis=1, keepdims=True)
+    normas[normas == 0] = 1.0
+    return skus, M / normas
 
 
 @st.cache_data
@@ -350,6 +380,59 @@ def compradas_compartidas_como_candidatos():
     return out
 
 
+def embeber_foto_nueva(pil_img: Image.Image):
+    """Convierte la foto del comprador al mismo espacio numerico que el indice.
+    Devuelve None (sin romper nada) si falta la clave de Voyage o falla la
+    llamada -- la app sigue con la busqueda por hash."""
+    api_key = st.secrets.get("VOYAGE_API_KEY", None)
+    if not api_key:
+        return None
+    try:
+        import voyageai
+        im = pil_img.convert("RGB")
+        im.thumbnail((512, 512))
+        vo = voyageai.Client(api_key=api_key)
+        res = vo.multimodal_embed([[im]], model=MODELO_EMBEDDING, input_type="query")
+        v = np.asarray(res.embeddings[0], dtype=np.float32)
+        n = np.linalg.norm(v)
+        return v / n if n else v
+    except Exception:
+        return None
+
+
+def candidatos_por_embedding(vector_consulta, n=N_POR_EMBEDDING):
+    """Busqueda visual: los N SKUs cuyo aspecto mas se parece al de la foto.
+
+    Un SKU puede tener varias fotos en el indice (sus 4 vistas + la miniatura
+    del catalogo); nos quedamos con la MEJOR de todas, porque alcanza con que
+    el comprador haya coincidido con uno de los angulos para que ese producto
+    entre. Ese es justamente el aporte de haber bajado las 4 vistas."""
+    if vector_consulta is None:
+        return []
+    idx = cargar_indice_embeddings()
+    if idx is None:
+        return []
+    skus, M = idx
+    sims = M @ vector_consulta          # coseno (todo esta normalizado)
+
+    mejor = {}
+    for sku, s in zip(skus, sims):
+        if s > mejor.get(sku, -2.0):
+            mejor[sku] = float(s)
+
+    por_sku = {r["sku"]: r for r in CATALOGO}
+    out = []
+    for sku, s in sorted(mejor.items(), key=lambda kv: -kv[1])[:n]:
+        r = por_sku.get(sku)
+        if not r or not r.get("thumb_b64"):
+            continue
+        r = dict(r)
+        r["_sim_visual"] = s
+        r["match_embedding"] = True
+        out.append(r)
+    return out
+
+
 def _grupo(dimension: str, valor: str):
     """Devuelve el grupo_estructural de un valor (ver ddg.json) -- None si la
     dimension no tiene grupo_estructural definido o el valor no esta mapeado."""
@@ -460,6 +543,7 @@ def candidatos_por_vector_ddg(vector_nuevo: dict, n_tier1=20, n_tier2=10):
 
 
 def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, categoria_forzada=None,
+                               vector_visual=None,
                                n=N_CANDIDATOS, max_por_familia=MAX_POR_FAMILIA_DE_COLOR):
     """Busca los SKUs mas parecidos por forma/color en TODO el catalogo (no se
     le pide categoria al comprador -- la IA la identifica sola a partir de la
@@ -488,8 +572,18 @@ def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, categoria_forzad
     pool.sort(key=lambda r: r["_dist"])
     base = pool[:n]
 
-    vistos = {r["sku"] for r in base}
-    expandido = list(base)
+    # v25: la busqueda visual por embeddings va PRIMERO en la lista -- es la
+    # via principal cuando el indice existe (compara como se ve el zapato, no
+    # los pixeles). El hash queda igual, abajo, como red de seguridad: si el
+    # indice no esta armado todavia o la llamada falla, la app se comporta
+    # exactamente como antes.
+    visuales = candidatos_por_embedding(vector_visual)
+    vistos = {r["sku"] for r in visuales}
+    expandido = list(visuales)
+    for r in base:
+        if r["sku"] not in vistos:
+            vistos.add(r["sku"])
+            expandido.append(r)
     for r in base:
         if len(r["sku"]) < 4:
             continue
@@ -793,6 +887,10 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list, categoria_forzad
         if c.get("match_vector_ddg"):
             etiqueta += (" | COINCIDE EN CATEGORIA+SILUETA(+ALTURA) segun el DDG "
                          "(dato estructurado, preseleccionado por vector, no solo por parecido de imagen)")
+        if c.get("match_embedding"):
+            etiqueta += (f" | PARECIDO VISUAL ALTO ({c['_sim_visual']:.0%}) segun el buscador "
+                         "de imagen (compara la forma del zapato, aguanta cambios de fondo/luz/"
+                         "angulo -- es la señal mas confiable de esta lista)")
         if c.get("match_categoria_forzada"):
             etiqueta += (f" | ES DE LA CATEGORIA '{categoria_forzada}' que indico el comprador "
                          "(traido especificamente por esa correccion -- prestale atencion particular)")
@@ -933,8 +1031,10 @@ if foto is not None:
         # solo, como antes.
         vector_nuevo = clasificar_foto_nueva(client, pil_img)
         cat_forzada = st.session_state.categoria_forzada
+        vector_visual = embeber_foto_nueva(pil_img)   # v25: busqueda visual
         candidatos = preseleccionar_candidatos(hashes_nuevos, vector_nuevo=vector_nuevo,
-                                                categoria_forzada=cat_forzada)
+                                                categoria_forzada=cat_forzada,
+                                                vector_visual=vector_visual)
         try:
             reporte = analizar(client, pil_img, candidatos, categoria_forzada=cat_forzada)
         except Exception as e:
