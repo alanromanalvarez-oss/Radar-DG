@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v28"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v28.1"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -245,10 +245,13 @@ def subir_foto_a_drive(pil_img: Image.Image, nombre: str):
     para mirar la muestra despues. Esto deja el archivo de verdad, con su
     link clickeable.
 
-    Devuelve None si Drive no esta configurado o si falla, sin cortar el
-    guardado en el Sheet (la foto chica se sigue guardando igual)."""
+    Devuelve (url, error). Si algo falla devuelve (None, "motivo") -- v28.1:
+    antes se devolvia None a secas y el error quedaba oculto, asi que cuando
+    fallaba era imposible saber si era la API sin habilitar, la carpeta sin
+    compartir o la cuota de la cuenta de servicio. Nunca corta el guardado en
+    el Sheet: la foto chica se guarda igual."""
     if not drive_disponible():
-        return None
+        return None, None
     try:
         from googleapiclient.http import MediaIoBaseUpload
         im = pil_img.convert("RGB")
@@ -261,9 +264,25 @@ def subir_foto_a_drive(pil_img: Image.Image, nombre: str):
             media_body=MediaIoBaseUpload(buf, mimetype="image/jpeg", resumable=False),
             fields="id, webViewLink",
         ).execute()
-        return archivo.get("webViewLink") or f"https://drive.google.com/file/d/{archivo['id']}/view"
-    except Exception:
-        return None
+        return (archivo.get("webViewLink")
+                or f"https://drive.google.com/file/d/{archivo['id']}/view"), None
+    except Exception as e:
+        detalle = str(e)
+        # Traducir los tres errores tipicos a algo accionable, en vez de
+        # mostrar el volcado crudo de la API de Google.
+        if "storageQuotaExceeded" in detalle or "storage quota" in detalle.lower():
+            return None, ("La cuenta de servicio no puede ser dueña de archivos en un Drive "
+                          "personal. Hay que usar una unidad compartida (Shared Drive) — ver README.")
+        if "has not been used" in detalle or "accessNotConfigured" in detalle or "SERVICE_DISABLED" in detalle:
+            return None, ("La Google Drive API todavía no está habilitada en el proyecto radar-dg "
+                          "(console.cloud.google.com → buscar 'Google Drive API' → Habilitar).")
+        if "404" in detalle or "notFound" in detalle:
+            return None, ("No encuentra la carpeta: revisá que GDRIVE_FOLDER_ID sea correcto y que "
+                          "la carpeta esté compartida como Editor con radar-dg-bot@radar-dg.iam.gserviceaccount.com")
+        if "403" in detalle or "insufficientPermissions" in detalle:
+            return None, ("Sin permiso sobre la carpeta: compartila como Editor con "
+                          "radar-dg-bot@radar-dg.iam.gserviceaccount.com")
+        return None, detalle[:300]
 
 
 def get_hoja_historial():
@@ -1505,7 +1524,7 @@ if foto is not None:
     if enviado:
         fila_id = str(uuid.uuid4())[:8]
         sello = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
-        url_foto = subir_foto_a_drive(
+        url_foto, error_drive = subir_foto_a_drive(
             pil_img, f"{sello}_{categoria or 'muestra'}_{proveedor or 'sin-proveedor'}_{fila_id}.jpg")
         fila = {
             "id": fila_id,
@@ -1531,9 +1550,9 @@ if foto is not None:
                 msg += " Marcada como comprada — ya la van a tener en cuenta todos los compradores."
             if url_foto:
                 msg += " La foto completa quedó en Drive."
-            elif drive_disponible():
-                msg += " (No se pudo subir la foto a Drive; el registro se guardó igual.)"
             st.success(msg)
+            if error_drive:
+                st.warning(f"La foto no se subió a Drive (el registro sí se guardó). Motivo: {error_drive}")
         else:
             st.info("No se pudo guardar en la base compartida (¿está conectado Google Sheets?). "
                     "El análisis de arriba sigue siendo válido igual.")
