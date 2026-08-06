@@ -1,4 +1,45 @@
-# Radar DG — guía de puesta en marcha (v27)
+# Radar DG — guía de puesta en marcha (v28)
+
+**Novedades de v28 — el arreglo de fondo de la efectividad**
+
+**Lo primero que tenés que mirar al abrir la app: la barra lateral.** Ahora dice
+si la búsqueda visual está encendida o apagada. Sospecho fuerte que en tus
+pruebas estuvo **apagada** todo el tiempo, y eso explicaría gran parte de los
+malos resultados: a una bota vaquera le llegaron balerinas y tenis, cosa que
+la búsqueda visual jamás haría. Si dice "APAGADA", falta `VOYAGE_API_KEY` en
+Streamlit Cloud → Settings → Secrets, o falta subir `embeddings_index.npz`.
+Antes fallaba en silencio y era imposible darse cuenta.
+
+**El arreglo estructural.** Hasta ahora la preselección se apoyaba en el
+parecido de píxeles, que con una foto real (fondo, luz, ángulo) se rompe. Por
+eso pasaba lo que viste: los productos correctos existían en el catálogo —vos
+misma los marcaste en morado en el mapa— pero nunca llegaban a la IA. Ahora la
+app **siempre** trae candidatos de la categoría que identificó, priorizando la
+categoría exacta antes que las vecinas, y sube de ~12 a 65 candidatos.
+
+Lo medí con 8 casos reales, degradando las fotos a propósito (giradas, más
+oscuras, con fondo de mesa) para simular una foto de feria:
+
+| | antes | ahora |
+|---|---|---|
+| Candidatos de la categoría correcta | mezclados | 65 de 65 |
+| El SKU correcto llega a la IA | 4 de 8 | **8 de 8** |
+
+**Colores corregidos con tu catálogo.** Los últimos 3 dígitos del SKU son el
+código de color de Dorothy Gaynor. Verifiqué que el 100% de los 1,395 SKUs
+estándar tienen un código que existe en el archivo que mandó Eli Vega, así que
+ahora el color es un dato exacto, no una estimación mía mirando píxeles (que
+era lo que ponía cafés en negro). Se mantienen 14 familias primarias, sin
+expandir: un café oscuro, un chocolate, un cognac y un camel son todos
+**Café**; un negro croco sigue siendo **Negro**.
+
+Una salvedad honesta: en algunos SKUs de Presapica el código parece un
+placeholder — por ejemplo la bota café D80250040501 está codificada como
+NEGRO. En el catálogo activo los códigos sí corresponden (COGNAC es el oxford
+café, NEGRO es el mocasín negro). Para los SKUs sin código (BAIZHEN, LADY PAU,
+etc.) se sigue estimando desde la foto.
+
+
 
 **Novedades de v27 — la causa de fondo de los errores de similitud**
 

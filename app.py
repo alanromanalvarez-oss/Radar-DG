@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v27
+Radar DG - app para compradores en feria (ej. SAPICA) -- v28
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v27"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v28"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -538,7 +538,7 @@ def _grupo(dimension: str, valor: str):
     return DDG.get("dimensiones", {}).get(dimension, {}).get("grupo_estructural", {}).get(valor)
 
 
-def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=60):
+def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=65):
     """v24: trae los N productos de UNA categoria concreta que mas se parecen
     a la muestra nueva.
 
@@ -565,12 +565,24 @@ def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=
     silueta_grupo_nuevo = _grupo("silueta", vec_nuevo.get("silueta"))
     altura_grupo_nuevo = _grupo("altura", vec_nuevo.get("altura"))
 
-    prioritarios, resto = [], []
+    # Tres niveles, en este orden (v28):
+    #   1. MISMA categoria exacta y ademas coincide silueta/altura por vector DDG
+    #   2. MISMA categoria exacta
+    #   3. Categoria vecina del mismo grupo (ej. Botin/Ugg cuando la muestra es Bota)
+    # Antes se mezclaba todo el grupo de una sola vez y se ordenaba por hash;
+    # con 200 productos en el grupo "cana", una bota terminaba compitiendo por
+    # lugar contra botines y uggs, y el hash (que con fotos reales es muy poco
+    # confiable) decidia. Priorizar la categoria exacta hace que a una bota le
+    # lleguen botas primero.
+    exactos_vec, exactos, vecinos = [], [], []
     for r in CATALOGO:
         if not r.get("phash") or not r.get("colorhash"):
             continue
-        if not (categorias_compatibles(categoria, r.get("categoria_ia"))
-                or categorias_compatibles(categoria, r.get("categoria"))):
+        cat_r_ia, cat_r = r.get("categoria_ia"), r.get("categoria")
+        es_exacto = categoria in (cat_r_ia, cat_r)
+        es_vecino = (categorias_compatibles(categoria, cat_r_ia)
+                     or categorias_compatibles(categoria, cat_r))
+        if not (es_exacto or es_vecino):
             continue
         r = dict(r)
         r["_dist"] = distancia_multi(hashes_nuevos, r["phash"], r["colorhash"])
@@ -584,11 +596,16 @@ def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=
             and altura_grupo_nuevo is not None
             and altura_grupo_nuevo == _grupo("altura", vec_cat.get("altura"))
         )
-        (prioritarios if coincide_vector else resto).append(r)
+        if es_exacto and coincide_vector:
+            exactos_vec.append(r)
+        elif es_exacto:
+            exactos.append(r)
+        else:
+            vecinos.append(r)
 
-    prioritarios.sort(key=lambda r: r["_dist"])
-    resto.sort(key=lambda r: r["_dist"])
-    return (prioritarios + resto)[:n]
+    for grupo in (exactos_vec, exactos, vecinos):
+        grupo.sort(key=lambda r: r["_dist"])
+    return (exactos_vec + exactos + vecinos)[:n]
 
 
 def candidatos_por_vector_ddg(vector_nuevo: dict, n_tier1=20, n_tier2=10):
@@ -706,12 +723,21 @@ def preseleccionar_candidatos(hashes_nuevos, vector_nuevo=None, categoria_forzad
             vistos.add(r["sku"])
             expandido.append(r)
 
-    # v24: si el comprador forzo una categoria desde la pantalla, sumamos los
-    # mas parecidos por imagen DENTRO de esa categoria. Va al final a
-    # proposito: suma, no reemplaza -- si la categoria forzada era la correcta
-    # estos van a ser los candidatos buenos, y si no, no se pierde nada de lo
-    # que ya se habia encontrado.
-    for r in candidatos_de_categoria(hashes_nuevos, categoria_forzada, vector_nuevo=vector_nuevo):
+    # v28 -- EL ARREGLO MAS IMPORTANTE DE ESTA VERSION.
+    # Antes esto corria SOLO si el comprador forzaba la categoria a mano.
+    # Resultado en la feria: a una bota vaquera le llegaban balerinas y tenis,
+    # y a un choclo cafe le llegaban sandalias y slingbacks -- aunque el
+    # catalogo tiene 74 botas y 61 choclos. Los productos correctos existian
+    # pero no entraban nunca en la comparacion, porque la preseleccion se
+    # apoyaba en el parecido de pixeles y ese parecido se rompe con una foto
+    # real (fondo, luz, angulo).
+    # Ahora SIEMPRE se traen los mejores de la categoria que identifico la IA
+    # (o la que forzo el comprador, que manda). Es una garantia dura: si la
+    # muestra es una bota, la IA va a ver botas si o si.
+    cat_objetivo = categoria_forzada or (vector_nuevo or {}).get("categoria_identificada")
+    n_cat = 95 if categoria_forzada else 65
+    for r in candidatos_de_categoria(hashes_nuevos, cat_objetivo,
+                                      vector_nuevo=vector_nuevo, n=n_cat):
         if r["sku"] not in vistos:
             vistos.add(r["sku"])
             expandido.append(r)
@@ -1004,8 +1030,9 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list, categoria_forzad
                          "de imagen (compara la forma del zapato, aguanta cambios de fondo/luz/"
                          "angulo -- es la señal mas confiable de esta lista)")
         if c.get("match_categoria_forzada"):
-            etiqueta += (f" | ES DE LA CATEGORIA '{categoria_forzada}' que indico el comprador "
-                         "(traido especificamente por esa correccion -- prestale atencion particular)")
+            etiqueta += (" | MISMA CATEGORIA que la muestra (traido a proposito desde esa categoria "
+                         "del catalogo, no por parecido de pixeles -- es de los candidatos con mas "
+                         "chance de competir de verdad, revisalo con atencion)")
         content.append({"type": "text", "text": etiqueta})
         content.append({"type": "image", "source": {"type": "base64", "media_type": "image/jpeg", "data": c["thumb_b64"]}})
 
@@ -1514,6 +1541,25 @@ if foto is not None:
 
 with st.sidebar:
     st.caption(f"Radar DG {VERSION}")
+
+    # v28: estado de los motores de busqueda. Hasta ahora, si el indice visual
+    # no cargaba o faltaba la clave, la app seguia con el metodo viejo SIN
+    # avisar -- se veian resultados pobres y era imposible saber si era un
+    # problema de configuracion o de criterio. Ahora se ve de un vistazo.
+    _idx = cargar_indice_embeddings()
+    _tiene_clave = bool(st.secrets.get("VOYAGE_API_KEY", None))
+    if _idx is not None and _tiene_clave:
+        st.success(f"🔎 Búsqueda visual activa ({len(_idx[0]):,} fotos indexadas)")
+    else:
+        falta = []
+        if _idx is None:
+            falta.append("falta el archivo embeddings_index.npz")
+        if not _tiene_clave:
+            falta.append("falta VOYAGE_API_KEY en Secrets")
+        st.error("🔎 Búsqueda visual APAGADA — " + " y ".join(falta) +
+                 ". La app está usando solo el método viejo, por eso las "
+                 "coincidencias van a ser pobres.")
+
     st.header("Feria en curso")
     if sheets_disponible():
         historial = leer_historial_compartido()
