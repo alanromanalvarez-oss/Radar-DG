@@ -1,4 +1,68 @@
-# Radar DG — guía de puesta en marcha (v25)
+# Radar DG — guía de puesta en marcha (v26)
+
+**Novedades de v26 — Mapa del catálogo, colores, y fotos en Drive**
+
+**Accesorios eliminado.** Eran 3 SKUs cargados por error (no son calzado). Se
+filtran al cargar el catálogo y desaparecieron de la lista de categorías. No
+toqué `catalog_index.json` para no arriesgar pisarlo — el filtro vive en el
+código, así que si algún día querés recuperarlos es una línea.
+
+**Sobre Alpargata:** sí está en la lista de categorías (es la segunda,
+alfabéticamente). Revisá si no te quedó fuera de la vista al desplegar el
+menú. Al quitar Accesorios la lista quedó más corta.
+
+**Botón "Mapa del catálogo".** Arriba hay dos botones: *Analizar muestra* (lo
+de siempre) y *Mapa del catálogo* (nuevo). El mapa muestra:
+
+- Filtros por categoría y color.
+- KPIs: modelos, inventario, venta y sell-through.
+- Barras de opciones por color, con el ST de cada color al lado.
+- **Lecturas rápidas** (mi propuesta de lo que un comprador quiere saber
+  antes de sumar una muestra): qué color rota mejor y cuál peor, en qué
+  colores hay solo 1-2 modelos, en cuáles no hay ninguno, el rango de precio
+  cubierto y las temporadas presentes. La más útil es la de rotación: te dice
+  si un color tiene pocas opciones porque es un hueco real o porque no vende.
+- Abajo, las fotos de los modelos agrupadas por color y ordenadas por venta.
+
+**Colores.** El catálogo no traía color, así que lo derivé de cada foto y lo
+guardé en `colores.json` (13 familias: Negro, Gris, Blanco, Beige, Café,
+Naranja, Rojo, Rosa, Amarillo, Verde, Azul, Morado, Multicolor). Un solo
+"Verde" cubre pastel, bandera y fosforescente, como pediste. Lo verifiqué
+mirando muestras de cada familia y quedó bien, pero es una estimación
+automática: los tonos camel caen en Naranja y algún bicolor puede quedar en
+Multicolor. Si querés corregir alguno, se edita a mano en `colores.json`, o se
+regenera con `py clasificar_colores.py`.
+
+**Fotos en Drive.** Hasta ahora, al guardar una muestra solo se guardaba una
+miniatura de 180px comprimida dentro de una celda del Sheet — sirve para
+reprocesar, no para mirar la muestra después. Ahora, si configurás Drive, se
+sube la **foto completa** y en el Sheet queda una columna `foto_url` con el
+link clickeable. Para activarlo:
+
+1. En Google Cloud (el mismo proyecto de la cuenta de servicio que ya usás
+   para Sheets), habilitá la **Google Drive API**.
+2. En tu Google Drive, creá una carpeta (por ejemplo "Radar DG — Muestras").
+3. Compartí esa carpeta con el email de la cuenta de servicio (el
+   `client_email` que está dentro de `gcp_service_account` en tus Secrets),
+   con permiso de **Editor**.
+4. Abrí la carpeta y copiá su ID de la URL: en
+   `drive.google.com/drive/folders/**1AbCdEf...**` el ID es la parte final.
+5. En Streamlit Cloud → Settings → Secrets, agregá:
+   ```
+   GDRIVE_FOLDER_ID = "1AbCdEf..."
+   ```
+
+Si no lo configurás, todo sigue funcionando igual que antes (se guarda la
+miniatura y nada se rompe).
+
+**Sobre la precisión.** Anotado que la ves en ~70%. El salto grande de v25
+(embeddings) resolvió el caso del mocasín café, pero falta consistencia. El
+próximo paso natural, cuando quieras, es medirlo en serio en vez de a ojo:
+armar una lista de 15-20 fotos reales con el SKU que *debería* salir, y
+correrla para tener un número de acierto antes y después de cada cambio. Sin
+eso estamos ajustando a ciegas.
+
+
 
 **Novedades de v25 — búsqueda visual por embeddings + las 4 vistas por SKU**
 

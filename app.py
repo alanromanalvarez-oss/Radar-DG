@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v25
+Radar DG - app para compradores en feria (ej. SAPICA) -- v26
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v25"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v26"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -88,7 +88,7 @@ COLUMNAS_SHEET = [
     "tipo_de_outfit", "precio_percibido",
     "top_sku_similar", "top_similitud_pct",
     "indice_similitud_dg", "indice_cobertura_nueva_dg",
-    "recomendacion", "motivo", "comprada", "foto_base64",
+    "recomendacion", "motivo", "comprada", "foto_url", "foto_base64",
 ]
 
 st.set_page_config(page_title="Radar DG", page_icon="🧭", layout="centered")
@@ -151,9 +151,40 @@ def get_anthropic_client():
     return anthropic.Anthropic(api_key=api_key)
 
 
-CATALOGO = cargar_catalogo()
+@st.cache_data
+def cargar_colores():
+    """Familia de color por SKU (ver clasificar_colores.py). Se calcula una
+    sola vez fuera de la app a partir de la miniatura de cada producto, asi la
+    app no tiene que abrir 1.500 imagenes al arrancar."""
+    try:
+        with open("colores.json", encoding="utf-8") as f:
+            return json.load(f)
+    except Exception:
+        return {}
+
+
+# v26: "Accesorios" se saca del catalogo y de las categorias validas -- eran 3
+# SKUs cargados por error (no son calzado) y no aportan nada a una decision de
+# compra de zapatos. Se filtran aca al cargar, en vez de editar
+# catalog_index.json, para no arriesgar pisar ese archivo por accidente.
+CATEGORIAS_EXCLUIDAS = {"Accesorios"}
+
+CATALOGO = [r for r in cargar_catalogo()
+            if (r.get("categoria") or "") not in CATEGORIAS_EXCLUIDAS]
 DDG = cargar_ddg()
+COLORES = cargar_colores()
 DIMENSIONES_DDG = list(DDG.get("dimensiones", {}).keys())
+
+# Orden fijo para mostrar los colores: primero los neutros (que dominan el
+# catalogo), despues los cromaticos. Cada uno con su muestra en hexadecimal
+# para pintarlo en pantalla.
+PALETA = [
+    ("Negro", "#1A1A1A"), ("Gris", "#9A9A9A"), ("Blanco", "#F2EFEA"),
+    ("Beige", "#D9C3A5"), ("Café", "#7B5233"), ("Naranja", "#D98A44"),
+    ("Rojo", "#B3242C"), ("Rosa", "#E8A0B4"), ("Amarillo", "#E3C34A"),
+    ("Verde", "#4C8C57"), ("Azul", "#3B5C93"), ("Morado", "#7A5099"),
+    ("Multicolor", "#9C6B3E"),
+]
 
 # Lista cerrada de categorias validas (v13): antes categoria_identificada era
 # texto libre y el prompt daba ejemplos que ni siquiera existian en el
@@ -163,7 +194,7 @@ DIMENSIONES_DDG = list(DDG.get("dimensiones", {}).keys())
 # siempre uno de estos nombres exactos (los mismos que usa el catalogo).
 CATEGORIAS_VALIDAS = sorted(set(
     DDG.get("categorias_cubiertas", []) + DDG.get("categorias_sin_definir_en_ddg", [])
-))
+) - CATEGORIAS_EXCLUIDAS)
 
 # Etiquetas legibles para el origen de cada candidato (alineado con las 3
 # fuentes que distingue el documento de Toño: catalogo activo / comprado
@@ -191,6 +222,48 @@ def get_gspread_client():
     scopes = ["https://www.googleapis.com/auth/spreadsheets"]
     creds = Credentials.from_service_account_info(dict(st.secrets["gcp_service_account"]), scopes=scopes)
     return gspread.authorize(creds)
+
+
+def drive_disponible() -> bool:
+    return "GDRIVE_FOLDER_ID" in st.secrets and "gcp_service_account" in st.secrets
+
+
+@st.cache_resource
+def get_drive():
+    from google.oauth2.service_account import Credentials
+    from googleapiclient.discovery import build
+    creds = Credentials.from_service_account_info(
+        dict(st.secrets["gcp_service_account"]),
+        scopes=["https://www.googleapis.com/auth/drive.file"])
+    return build("drive", "v3", credentials=creds, cache_discovery=False)
+
+
+def subir_foto_a_drive(pil_img: Image.Image, nombre: str):
+    """Guarda la foto COMPLETA (no la miniatura) en una carpeta de Google
+    Drive y devuelve el link. En el Sheet se venia guardando solo un thumb de
+    180px comprimido dentro de la celda -- util para reprocesar, inservible
+    para mirar la muestra despues. Esto deja el archivo de verdad, con su
+    link clickeable.
+
+    Devuelve None si Drive no esta configurado o si falla, sin cortar el
+    guardado en el Sheet (la foto chica se sigue guardando igual)."""
+    if not drive_disponible():
+        return None
+    try:
+        from googleapiclient.http import MediaIoBaseUpload
+        im = pil_img.convert("RGB")
+        im.thumbnail((1600, 1600))
+        buf = io.BytesIO()
+        im.save(buf, format="JPEG", quality=88)
+        buf.seek(0)
+        archivo = get_drive().files().create(
+            body={"name": nombre, "parents": [st.secrets["GDRIVE_FOLDER_ID"]]},
+            media_body=MediaIoBaseUpload(buf, mimetype="image/jpeg", resumable=False),
+            fields="id, webViewLink",
+        ).execute()
+        return archivo.get("webViewLink") or f"https://drive.google.com/file/d/{archivo['id']}/view"
+    except Exception:
+        return None
 
 
 def get_hoja_historial():
@@ -955,6 +1028,155 @@ def analizar(client, foto_nueva: Image.Image, candidatos: list, categoria_forzad
     raise RuntimeError("El modelo no devolvio el reporte estructurado esperado.")
 
 
+CSS_MAPA = """
+<style>
+.dg-kpis{display:flex;gap:10px;flex-wrap:wrap;margin:4px 0 14px 0}
+.dg-kpi{flex:1;min-width:120px;background:#15161A;border:1px solid #2A2C33;
+        border-left:3px solid #9C6B3E;border-radius:8px;padding:11px 13px}
+.dg-kpi .k{color:#8A8F9A;font-size:.62rem;letter-spacing:.13em;text-transform:uppercase}
+.dg-kpi .v{color:#F2EFEA;font-size:1.32rem;font-weight:700;font-variant-numeric:tabular-nums;
+           line-height:1.25;font-family:ui-monospace,'SF Mono',Menlo,monospace}
+.dg-kpi .s{color:#6F7480;font-size:.62rem}
+.dg-row{display:flex;align-items:center;gap:9px;margin:5px 0}
+.dg-sw{width:13px;height:13px;border-radius:3px;border:1px solid #00000022;flex:none}
+.dg-nm{width:78px;color:#E8E4DE;font-size:.76rem;flex:none}
+.dg-bar{flex:1;background:#20222A;border-radius:4px;height:17px;overflow:hidden}
+.dg-fill{height:100%;border-radius:4px}
+.dg-n{width:96px;text-align:right;color:#9AA0AB;font-size:.7rem;
+      font-family:ui-monospace,Menlo,monospace;flex:none}
+.dg-tag{display:inline-block;background:#15161A;border:1px solid #2A2C33;border-radius:20px;
+        padding:3px 11px;margin:3px 4px 3px 0;color:#D8D3CB;font-size:.72rem}
+.dg-tag b{color:#C98F4F}
+.dg-h{color:#9C6B3E;font-size:.68rem;letter-spacing:.14em;text-transform:uppercase;
+      margin:16px 0 6px 0;font-weight:700}
+</style>
+"""
+
+
+def _pct(x):
+    try:
+        return float(x or 0)
+    except Exception:
+        return 0.0
+
+
+def kpi(col, etiqueta, valor, sub=""):
+    col.markdown(
+        f'<div class="dg-kpi"><div class="k">{etiqueta}</div>'
+        f'<div class="v">{valor}</div><div class="s">{sub}</div></div>',
+        unsafe_allow_html=True)
+
+
+def vista_mapa():
+    """Mapa del catalogo: que hay, en que colores, y que tan bien se vende --
+    para que el comprador entienda la cobertura de una categoria ANTES de
+    decidir si suma otra muestra parecida."""
+    st.markdown(CSS_MAPA, unsafe_allow_html=True)
+
+    cats = sorted({(r.get("categoria") or "").strip() for r in CATALOGO if r.get("categoria")})
+    c1, c2 = st.columns([2, 2])
+    with c1:
+        cat_sel = st.selectbox("Categoría", ["Todas"] + cats, key="mapa_cat")
+    universo = [r for r in CATALOGO if cat_sel == "Todas" or r.get("categoria") == cat_sel]
+
+    presentes = [n for n, _ in PALETA if any(COLORES.get(r["sku"]) == n for r in universo)]
+    with c2:
+        color_sel = st.selectbox("Color", ["Todos"] + presentes, key="mapa_color")
+
+    datos = [r for r in universo
+             if color_sel == "Todos" or COLORES.get(r["sku"]) == color_sel]
+
+    inv = sum(int(r.get("inventario") or 0) for r in datos)
+    vta = sum(int(r.get("ventas") or 0) for r in datos)
+    st_prom = (vta / (inv + vta) * 100) if (inv + vta) else 0
+    precios = [float(r["precio"]) for r in datos if r.get("precio")]
+
+    k1, k2, k3, k4 = st.columns(4)
+    kpi(k1, "Modelos", f"{len(datos):,}", f"{len(presentes)} colores" if color_sel == "Todos" else color_sel)
+    kpi(k2, "Inventario", f"{inv:,}", "pares en piso")
+    kpi(k3, "Venta", f"{vta:,}", "pares vendidos")
+    kpi(k4, "Sell-through", f"{st_prom:.0f}%", "venta / (venta+inv)")
+
+    # ---- Desglose por color: cuantas opciones y que tan bien rotan ----
+    st.markdown('<div class="dg-h">Opciones por color</div>', unsafe_allow_html=True)
+    hexes = dict(PALETA)
+    filas = []
+    for nombre, _ in PALETA:
+        grupo = [r for r in universo if COLORES.get(r["sku"]) == nombre]
+        if not grupo:
+            continue
+        gi = sum(int(r.get("inventario") or 0) for r in grupo)
+        gv = sum(int(r.get("ventas") or 0) for r in grupo)
+        filas.append({"color": nombre, "n": len(grupo), "inv": gi, "vta": gv,
+                      "st": (gv / (gi + gv) * 100) if (gi + gv) else 0})
+    if filas:
+        tope = max(f["n"] for f in filas)
+        for f in filas:
+            ancho = int(f["n"] / tope * 100)
+            st.markdown(
+                f'<div class="dg-row"><div class="dg-sw" style="background:{hexes[f["color"]]}"></div>'
+                f'<div class="dg-nm">{f["color"]}</div>'
+                f'<div class="dg-bar"><div class="dg-fill" style="width:{ancho}%;'
+                f'background:{hexes[f["color"]]}"></div></div>'
+                f'<div class="dg-n">{f["n"]} · ST {f["st"]:.0f}%</div></div>',
+                unsafe_allow_html=True)
+
+    # ---- Lecturas para el comprador (lo que se pregunta antes de comprar) ----
+    if filas and cat_sel != "Todas":
+        st.markdown('<div class="dg-h">Lecturas rápidas</div>', unsafe_allow_html=True)
+        con_venta = [f for f in filas if (f["inv"] + f["vta"]) >= 40]
+        tags = []
+        if con_venta:
+            mejor = max(con_venta, key=lambda f: f["st"])
+            peor = min(con_venta, key=lambda f: f["st"])
+            tags.append(f'Mejor rotación: <b>{mejor["color"]}</b> (ST {mejor["st"]:.0f}%)')
+            tags.append(f'Peor rotación: <b>{peor["color"]}</b> (ST {peor["st"]:.0f}%)')
+        escasos = [f["color"] for f in filas if f["n"] <= 2]
+        faltantes = [n for n, _ in PALETA if not any(x["color"] == n for x in filas)]
+        if escasos:
+            tags.append(f'Solo 1-2 modelos en: <b>{", ".join(escasos[:5])}</b>')
+        if faltantes:
+            tags.append(f'Sin ninguna opción en: <b>{", ".join(faltantes[:6])}</b>')
+        if precios:
+            tags.append(f'Precio: <b>{fmt_moneda(min(precios))} a {fmt_moneda(max(precios))}</b>')
+        temps = sorted({(r.get("temporada") or "").strip() for r in universo if r.get("temporada")})
+        if temps:
+            tags.append(f'Temporadas: <b>{", ".join(temps[-4:])}</b>')
+        st.markdown("".join(f'<span class="dg-tag">{t}</span>' for t in tags),
+                    unsafe_allow_html=True)
+
+    # ---- Fotos, agrupadas por color ----
+    st.markdown('<div class="dg-h">Modelos</div>', unsafe_allow_html=True)
+    orden = {n: i for i, (n, _) in enumerate(PALETA)}
+    datos = [r for r in datos if r.get("thumb_b64")]
+    datos.sort(key=lambda r: (orden.get(COLORES.get(r["sku"]), 99),
+                              -int(r.get("ventas") or 0)))
+    TOPE = 120
+    if len(datos) > TOPE:
+        st.caption(f"Mostrando {TOPE} de {len(datos)} — afiná el filtro para ver el resto.")
+        datos = datos[:TOPE]
+
+    color_actual = None
+    cols, i = None, 0
+    for r in datos:
+        c = COLORES.get(r["sku"], "—")
+        if c != color_actual:
+            color_actual = c
+            st.markdown(
+                f'<div class="dg-row" style="margin-top:12px"><div class="dg-sw" '
+                f'style="background:{hexes.get(c, "#666")}"></div>'
+                f'<div style="color:#E8E4DE;font-size:.8rem;font-weight:600">{c}</div></div>',
+                unsafe_allow_html=True)
+            cols, i = st.columns(5), 0
+        with cols[i % 5]:
+            st.image(base64.b64decode(r["thumb_b64"]), use_container_width=True)
+            st.caption(f"**{r['sku']}**  \nInv {int(r.get('inventario') or 0)} · "
+                       f"Vta {int(r.get('ventas') or 0)}")
+        i += 1
+        if i % 5 == 0:
+            cols = st.columns(5)
+
+
 def fmt_moneda(v):
     if v is None or v == "":
         return "—"
@@ -995,6 +1217,24 @@ if "reset_ctr" not in st.session_state:
     st.session_state.reset_ctr = 0
 if "categoria_forzada" not in st.session_state:
     st.session_state.categoria_forzada = None
+if "vista" not in st.session_state:
+    st.session_state.vista = "radar"
+
+nav1, nav2 = st.columns(2)
+with nav1:
+    if st.button("📷 Analizar muestra", use_container_width=True,
+                  type="primary" if st.session_state.vista == "radar" else "secondary"):
+        st.session_state.vista = "radar"
+        st.rerun()
+with nav2:
+    if st.button("🗺️ Mapa del catálogo", use_container_width=True,
+                  type="primary" if st.session_state.vista == "mapa" else "secondary"):
+        st.session_state.vista = "mapa"
+        st.rerun()
+
+if st.session_state.vista == "mapa":
+    vista_mapa()
+    st.stop()
 
 col_reset1, col_reset2 = st.columns([3, 1])
 with col_reset2:
@@ -1182,6 +1422,9 @@ if foto is not None:
 
     if enviado:
         fila_id = str(uuid.uuid4())[:8]
+        sello = dt.datetime.now().strftime("%Y%m%d-%H%M%S")
+        url_foto = subir_foto_a_drive(
+            pil_img, f"{sello}_{categoria or 'muestra'}_{proveedor or 'sin-proveedor'}_{fila_id}.jpg")
         fila = {
             "id": fila_id,
             "timestamp": dt.datetime.now().isoformat(timespec="seconds"),
@@ -1197,12 +1440,18 @@ if foto is not None:
             "recomendacion": reco_key,
             "motivo": reporte.get("motivo", ""),
             "comprada": "SI" if ya_comprada else "",
+            "foto_url": url_foto or "",
             "foto_base64": thumb_b64(pil_img),
         }
         if guardar_en_sheet(fila):
-            st.success("Guardada en la base compartida." + (
-                " Marcada como comprada — ya la van a tener en cuenta todos los compradores."
-                if ya_comprada else ""))
+            msg = "Guardada en la base compartida."
+            if ya_comprada:
+                msg += " Marcada como comprada — ya la van a tener en cuenta todos los compradores."
+            if url_foto:
+                msg += " La foto completa quedó en Drive."
+            elif drive_disponible():
+                msg += " (No se pudo subir la foto a Drive; el registro se guardó igual.)"
+            st.success(msg)
         else:
             st.info("No se pudo guardar en la base compartida (¿está conectado Google Sheets?). "
                     "El análisis de arriba sigue siendo válido igual.")
