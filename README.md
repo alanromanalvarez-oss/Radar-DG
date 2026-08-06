@@ -1,4 +1,57 @@
-# Radar DG — guía de puesta en marcha (v26)
+# Radar DG — guía de puesta en marcha (v27)
+
+**Novedades de v27 — la causa de fondo de los errores de similitud**
+
+Revisando las fotos reales del catálogo, categoría por categoría, encontré que
+**mis definiciones de categoría en el DDG estaban mal para Dorothy Gaynor.**
+El error más grave: yo definí "Zapatilla" como *"sneaker de moda/streetwear"*,
+cuando en este catálogo los **283 Zapatilla son zapatos de tacón**. También
+"Choclo" estaba mal (son de agujetas tipo derby, no mocasines gruesos).
+
+El efecto en cadena era exactamente el que venías viendo: la IA miraba un taco,
+seguía mi definición equivocada, lo llamaba "Fiesta", y el filtro duro de
+categoría le bloqueaba justo los 283 candidatos correctos. Lo mismo con el
+boat shoe: el catálogo lo tiene como Flat, la IA lo lee como Mocasín, y el
+filtro lo mataba.
+
+Dos correcciones:
+
+1. **Definiciones reescritas** mirando las fotos de cada categoría, una por
+   una. Ahora dicen lo que Dorothy Gaynor realmente vende, no lo que el
+   diccionario general del español diría.
+2. **La categoría ya no es un filtro absoluto.** Se agruparon las categorías
+   que compiten de verdad por la misma decisión: piso cerrado (Flat, Balerina,
+   Mocasín, Choclo, Confort), tacón (Zapatilla, Fiesta), abierto (Sandalia,
+   Alpargata), sneaker (Tenis) y caña (Bota, Botín, Ugg). Dentro de un grupo,
+   la diferencia de nombre es menor y se sigue evaluando por silueta, altura y
+   punta. Entre grupos distintos (una sandalia contra una bota) sigue siendo
+   descarte inmediato. Verifiqué las 11 combinaciones clave.
+
+**Sobre los KPIs y el sell-through (respondiendo tu duda).** El ST es
+`venta / (venta + inventario)`, y lo calculo **agregado**: sumo la venta de
+todos los modelos y la divido entre la suma de venta más inventario. No es un
+promedio de porcentajes — un promedio dejaría que un modelo con 2 pares en
+stock pesara igual que uno con 3,000, y distorsionaría todo.
+
+Verifiqué que esta fórmula coincide con la columna ST de tu propio Excel
+(D17240011620: el Excel dice 58, mi cálculo 57.8).
+
+Sobre los ceros: hay 206 modelos con inventario 0 y venta 0 (todos de China
+SS27 y Presapica — muestras que aún no llegan a piso). Esos **no bajan el ST**,
+porque no suman ni al numerador ni al denominador. Lo que sí baja el ST es un
+modelo con inventario alto y poca venta, y eso es correcto: es mercancía real
+que no está rotando. Los ST bajos que ves son reales, no un artefacto — por
+ejemplo Bota en Gris: 2,686 pares en piso y 26 vendidos.
+
+Lo que sí faltaba era poder interpretarlo, así que ahora el KPI de Modelos
+avisa cuántos están "sin movimiento aún" y el de Sell-through dice sobre
+cuántos modelos con datos está calculado.
+
+**Sobre las categorías que fallaban:** probé las 196 combinaciones de
+categoría × color ejecutando la función real del mapa, y no falla ninguna. Las
+dos que viste eran de v26, antes del arreglo de los valores no numéricos.
+
+
 
 **Novedades de v26 — Mapa del catálogo, colores, y fotos en Drive**
 

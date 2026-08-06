@@ -13,20 +13,29 @@
 
   "categorias_criterios_de_identificacion": {
     "_nota": "Vector 1 del reporte (categoria_identificada). Guía corta para reconocer cada categoría por la silueta en la foto -- la IA debe elegir SIEMPRE una de estas, nunca inventar un nombre nuevo ni una variante de ortografía distinta.",
-    "Sandalia": "Cubierta parcial, con tiras o correas que dejan ver buena parte del pie (empeine y/o talón expuestos).",
-    "Zapatilla": "Calzado urbano casual bajo, tipo sneaker de moda/streetwear pero no deportivo técnico.",
-    "Tenis": "Calzado deportivo técnico (running/training), suela gruesa con diseño deportivo marcado.",
-    "Flat": "Zapato cerrado plano, sin tacón, corte bajo tipo mocasín/bailarina simple.",
-    "Confort": "Cerrado, plano o con tacón muy bajo, pensado para uso prolongado/diario, sin elementos de moda marcados.",
-    "Fiesta": "Cerrado o con tiras finas, con tacón medio/alto, materiales o brillo pensados para uso formal/noche.",
-    "Botín": "Cubre el tobillo, corte corto (por debajo del tobillo o justo hasta el hueso).",
-    "Bota": "Cubre desde el tobillo hacia arriba (caña corta, media, alta o sobre la rodilla) -- ver dimensión silueta para la subdivisión por altura de caña.",
-    "Choclo": "Zapato cerrado de corte bajo, generalmente informal, tipo mocasín grueso o casual de cuero.",
-    "Mocasín": "Cerrado, sin cordones, corte bajo, entrada por el empeine (tipo loafer).",
-    "Ugg": "Bota de corte medio/alto en material tipo borrego o gamuza gruesa, look invernal informal.",
-    "Balerina": "Plano, cerrado o semi-cerrado, corte bajo y redondeado, muy simple.",
-    "Alpargata": "Suela de esparto/yute o símil, corte informal de verano.",
-    "Accesorios": "No es calzado (carteras, cinturones u otros complementos) -- no tiene vector_dg de calzado aplicable; marcalo igual como categoria_identificada y decilo explicitamente en huecos/motivo."
+    "_nota_v27": "CORREGIDO en v27 revisando las fotos reales del catálogo, una categoría a la vez. Las definiciones anteriores estaban tomadas del uso genérico del español y NO del uso real de Dorothy Gaynor. El error más grave: 'Zapatilla' estaba definida como 'sneaker de moda' cuando en este catálogo los 283 Zapatilla son ZAPATOS DE TACÓN. Eso hacía que la IA viera un taco, lo llamara 'Fiesta', y que el filtro de categoría le bloqueara justamente los candidatos correctos. 'Choclo' también estaba mal (son de agujetas, no mocasines gruesos).",
+    "Zapatilla": "Zapato de mujer CON TACÓN (bajo, medio o alto), cerrado o slingback, de uso diario u oficina. OJO: en este catálogo 'Zapatilla' NO es tenis ni sneaker -- es el zapato de tacón clásico. Es la categoría más común para un taco liso.",
+    "Tenis": "Sneaker: suela de goma, generalmente con agujetas, look deportivo o urbano. Incluye tanto el deportivo técnico como el sneaker de moda (retro, blanco minimalista, chunky).",
+    "Fiesta": "Calzado de vestir o de noche: tacón medio/alto con tiras finas al tobillo, satinados, brillos o metalizados. Se distingue de Zapatilla porque es más de evento que de diario.",
+    "Flat": "Zapato cerrado de piso (sin tacón o casi nulo) de estilo femenino: mary jane con correa, balerina con detalle, mocasín plano suave.",
+    "Balerina": "Balerina clásica: de piso, corte muy bajo y redondeado, sin correas ni herrajes, lo más simple posible.",
+    "Mocasín": "Loafer SIN agujetas, entrada por el empeine, corte bajo y estructura clásica. Incluye el boat shoe y el driver.",
+    "Choclo": "Zapato cerrado CON AGUJETAS, tipo derby u oxford, de estructura formal o casual de cuero.",
+    "Confort": "Calzado cerrado pensado para estar de pie muchas horas: suela gruesa acolchada, materiales flexibles, tacón bajo o nulo, sin elementos de moda marcados.",
+    "Sandalia": "Calzado abierto con tiras o correas que dejan ver buena parte del pie. Puede ser plana, con plataforma o con tacón.",
+    "Alpargata": "Suela de yute/esparto trenzado (a veces con plataforma), normalmente con cintas que se atan al tobillo.",
+    "Bota": "Caña que sube por la pierna, desde media pantorrilla hasta sobre la rodilla -- ver la dimensión silueta para la subdivisión por altura de caña.",
+    "Botín": "Bota corta: llega al tobillo o apenas lo cubre. Incluye el estilo militar/track con suela gruesa y el Chelsea con elástico.",
+    "Ugg": "Bota de borrego o shearling, corte tobillo o medio, suela plana gruesa, look invernal informal."
+  },
+
+  "grupos_de_categoria": {
+    "_nota": "Agregado en v27 para arreglar un error real y repetido: la categoría se estaba usando como filtro duro absoluto, y eso mataba coincidencias legítimas cuando dos categorías vecinas describen el mismo zapato. Caso concreto: un boat shoe café que el catálogo tiene como 'Flat' y la IA lee como 'Mocasín' -- ninguna lectura está mal, pero con filtro absoluto el producto correcto no entra nunca. Ahora: si dos categorías están en el MISMO grupo, la diferencia de categoría es MENOR (se sigue evaluando por silueta/altura/punta); si están en grupos DISTINTOS, ahí sí es filtro duro.",
+    "piso_cerrado": ["Flat", "Balerina", "Mocasín", "Choclo", "Confort"],
+    "tacon": ["Zapatilla", "Fiesta"],
+    "abierto": ["Sandalia", "Alpargata"],
+    "sneaker": ["Tenis"],
+    "cana": ["Bota", "Botín", "Ugg"]
   },
 
   "dimensiones": {

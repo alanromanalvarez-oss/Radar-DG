@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v26
+Radar DG - app para compradores en feria (ej. SAPICA) -- v27
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v26"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v27"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -506,6 +506,32 @@ def candidatos_por_embedding(vector_consulta, n=N_POR_EMBEDDING):
     return out
 
 
+GRUPOS_CATEGORIA = {k: v for k, v in DDG.get("grupos_de_categoria", {}).items()
+                    if not k.startswith("_")}
+
+
+def grupo_de_categoria(cat: str):
+    for g, miembros in GRUPOS_CATEGORIA.items():
+        if cat in miembros:
+            return g
+    return None
+
+
+def categorias_compatibles(cat_a: str, cat_b: str) -> bool:
+    """True si las dos categorias pueden competir por la misma decision de
+    compra. No exige que sean iguales: alcanza con que esten en el mismo
+    grupo (ver grupos_de_categoria en ddg.json). Muchos zapatos caen justo
+    en el limite entre dos categorias vecinas -- un boat shoe que el catalogo
+    tiene como Flat y se lee como Mocasin -- y exigir el mismo nombre exacto
+    hacia perder coincidencias correctas."""
+    if not cat_a or not cat_b:
+        return False
+    if cat_a == cat_b:
+        return True
+    ga, gb = grupo_de_categoria(cat_a), grupo_de_categoria(cat_b)
+    return ga is not None and ga == gb
+
+
 def _grupo(dimension: str, valor: str):
     """Devuelve el grupo_estructural de un valor (ver ddg.json) -- None si la
     dimension no tiene grupo_estructural definido o el valor no esta mapeado."""
@@ -543,7 +569,8 @@ def candidatos_de_categoria(hashes_nuevos, categoria: str, vector_nuevo=None, n=
     for r in CATALOGO:
         if not r.get("phash") or not r.get("colorhash"):
             continue
-        if r.get("categoria_ia") != categoria and r.get("categoria") != categoria:
+        if not (categorias_compatibles(categoria, r.get("categoria_ia"))
+                or categorias_compatibles(categoria, r.get("categoria"))):
             continue
         r = dict(r)
         r["_dist"] = distancia_multi(hashes_nuevos, r["phash"], r["colorhash"])
@@ -805,8 +832,20 @@ aunque compartan color, textura o material. Hay CUATRO filtros duros
 INDEPENDIENTES entre si (no es que uno sea "mas estructura" que el otro -- una
 muestra puede fallar cualquiera de los cuatro por separado y ya alcanza para
 descartarla como redundancia real):
-1. Categoria (categoria_identificada): bota / botin / choclo / sandalia /
-   confort / etc. -- ver categorias_criterios_de_identificacion del DDG.
+1. Categoria (categoria_identificada) -- ver categorias_criterios_de_identificacion
+   del DDG, y leelos con atencion porque el uso de Dorothy Gaynor no siempre
+   coincide con el uso general del español (el caso mas importante:
+   "Zapatilla" aca es el ZAPATO DE TACON, no un tenis).
+   OJO, matiz importante: la categoria es filtro duro SOLO ENTRE GRUPOS
+   distintos (ver grupos_de_categoria del DDG). Si la muestra y el candidato
+   caen en el MISMO grupo -- por ejemplo Flat y Mocasin, o Zapatilla y Fiesta,
+   o Bota y Botin -- la diferencia de nombre es MENOR y NO alcanza para
+   descartar: segui evaluando por silueta, altura y punta, que son los que
+   deciden de verdad. Muchos zapatos caen justo en el limite entre dos
+   categorias vecinas y las dos lecturas son defendibles (caso real: un boat
+   shoe que el catalogo tiene como Flat y se lee como Mocasin); descartarlo
+   por el nombre seria un error. Entre grupos distintos (una sandalia contra
+   una bota) si es descarte inmediato.
 2. Silueta (dimension "silueta" del DDG -- Cerrada / Destalonado / Abierta,
    mas las 4 variantes de caña para Bota): esto es el corte de talon del
    calzado, NO la categoria. Un Cerrado (talon totalmente cubierto) y un
@@ -1053,11 +1092,18 @@ CSS_MAPA = """
 """
 
 
-def _pct(x):
+def _num(v, default=0.0):
+    """Convierte a numero tolerando basura. Hace falta de verdad: varias filas
+    de PRESS27 traen texto donde deberia haber un numero -- precio '$', costo
+    'NEGOCIAND' (negociando), margen '%'. Sin esto, entrar al mapa en una
+    categoria que incluyera una de esas filas reventaba la pantalla
+    (ValueError en float()), que es exactamente lo que paso con Alpargata."""
+    if v is None or v == "":
+        return default
     try:
-        return float(x or 0)
-    except Exception:
-        return 0.0
+        return float(v)
+    except (TypeError, ValueError):
+        return default
 
 
 def kpi(col, etiqueta, valor, sub=""):
@@ -1086,16 +1132,24 @@ def vista_mapa():
     datos = [r for r in universo
              if color_sel == "Todos" or COLORES.get(r["sku"]) == color_sel]
 
-    inv = sum(int(r.get("inventario") or 0) for r in datos)
-    vta = sum(int(r.get("ventas") or 0) for r in datos)
+    inv = int(sum(_num(r.get("inventario")) for r in datos))
+    vta = int(sum(_num(r.get("ventas")) for r in datos))
     st_prom = (vta / (inv + vta) * 100) if (inv + vta) else 0
-    precios = [float(r["precio"]) for r in datos if r.get("precio")]
+    precios = [_num(r.get("precio")) for r in datos if _num(r.get("precio")) > 0]
+
+    # Cuantos modelos tienen movimiento real. Los que no (inventario 0 y venta
+    # 0) son muestras de China SS27 / Presapica que todavia no llegaron a
+    # piso: cuentan como opciones del catalogo, pero no aportan nada al ST.
+    con_datos = [r for r in datos if (_num(r.get("inventario")) + _num(r.get("ventas"))) > 0]
+    sin_datos = len(datos) - len(con_datos)
 
     k1, k2, k3, k4 = st.columns(4)
-    kpi(k1, "Modelos", f"{len(datos):,}", f"{len(presentes)} colores" if color_sel == "Todos" else color_sel)
+    kpi(k1, "Modelos", f"{len(datos):,}",
+        f"{sin_datos} sin movimiento aún" if sin_datos else
+        (f"{len(presentes)} colores" if color_sel == "Todos" else color_sel))
     kpi(k2, "Inventario", f"{inv:,}", "pares en piso")
     kpi(k3, "Venta", f"{vta:,}", "pares vendidos")
-    kpi(k4, "Sell-through", f"{st_prom:.0f}%", "venta / (venta+inv)")
+    kpi(k4, "Sell-through", f"{st_prom:.0f}%", f"sobre {len(con_datos)} modelos con datos")
 
     # ---- Desglose por color: cuantas opciones y que tan bien rotan ----
     st.markdown('<div class="dg-h">Opciones por color</div>', unsafe_allow_html=True)
@@ -1105,8 +1159,8 @@ def vista_mapa():
         grupo = [r for r in universo if COLORES.get(r["sku"]) == nombre]
         if not grupo:
             continue
-        gi = sum(int(r.get("inventario") or 0) for r in grupo)
-        gv = sum(int(r.get("ventas") or 0) for r in grupo)
+        gi = int(sum(_num(r.get("inventario")) for r in grupo))
+        gv = int(sum(_num(r.get("ventas")) for r in grupo))
         filas.append({"color": nombre, "n": len(grupo), "inv": gi, "vta": gv,
                       "st": (gv / (gi + gv) * 100) if (gi + gv) else 0})
     if filas:
@@ -1150,7 +1204,7 @@ def vista_mapa():
     orden = {n: i for i, (n, _) in enumerate(PALETA)}
     datos = [r for r in datos if r.get("thumb_b64")]
     datos.sort(key=lambda r: (orden.get(COLORES.get(r["sku"]), 99),
-                              -int(r.get("ventas") or 0)))
+                              -_num(r.get("ventas"))))
     TOPE = 120
     if len(datos) > TOPE:
         st.caption(f"Mostrando {TOPE} de {len(datos)} — afiná el filtro para ver el resto.")
@@ -1170,8 +1224,8 @@ def vista_mapa():
             cols, i = st.columns(5), 0
         with cols[i % 5]:
             st.image(base64.b64decode(r["thumb_b64"]), use_container_width=True)
-            st.caption(f"**{r['sku']}**  \nInv {int(r.get('inventario') or 0)} · "
-                       f"Vta {int(r.get('ventas') or 0)}")
+            st.caption(f"**{r['sku']}**  \nInv {int(_num(r.get('inventario')))} · "
+                       f"Vta {int(_num(r.get('ventas')))}")
         i += 1
         if i % 5 == 0:
             cols = st.columns(5)
@@ -1381,7 +1435,8 @@ if foto is not None:
     # filtro minimo para que la lista siga siendo util como contexto.
     redund_skus = {r["sku"] for r in redund}
     otros = [c for c in candidatos
-             if c["sku"] not in redund_skus and c.get("categoria") == categoria]
+             if c["sku"] not in redund_skus
+             and categorias_compatibles(categoria, c.get("categoria"))]
     otros.sort(key=lambda c: c.get("_dist", 200))
     otros = otros[:10]
     if otros:
