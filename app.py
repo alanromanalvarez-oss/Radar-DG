@@ -1,5 +1,5 @@
 """
-Radar DG - app para compradores en feria (ej. SAPICA) -- v28
+Radar DG - app para compradores en feria (ej. SAPICA) -- v30
 =============================================================
 El comprador abre este link en el celular, saca (o sube) una foto de la
 muestra -- YA NO elige categoria a mano, la IA la identifica sola por la
@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v29"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v30"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -321,6 +321,30 @@ def guardar_en_sheet(fila: dict) -> str:
     except Exception as e:
         st.warning(f"No se pudo guardar en la base compartida ({e}). El análisis igual se muestra abajo.")
         return None
+
+
+def eliminar_de_sheet(fila_id: str):
+    """Borra UNA muestra del historial, buscandola por su id.
+
+    Se busca la fila por id en el momento de borrar (en vez de recordar el
+    numero de fila que se vio en pantalla) porque entre que el comprador abre
+    el historial y aprieta borrar, otro comprador puede haber agregado o
+    quitado filas -- y borrar por posicion terminaria eliminando la muestra
+    equivocada. Devuelve (ok, mensaje_de_error)."""
+    if not sheets_disponible():
+        return False, "La base compartida no está conectada."
+    try:
+        ws = get_hoja_historial()
+        col_id = COLUMNAS_SHEET.index("id") + 1
+        ids = ws.col_values(col_id)          # incluye el encabezado en la posicion 1
+        for i, valor in enumerate(ids, start=1):
+            if i > 1 and str(valor).strip() == str(fila_id).strip():
+                ws.delete_rows(i)
+                leer_historial_compartido.clear()
+                return True, None
+        return False, "No encontré esa muestra (puede que alguien más ya la haya borrado)."
+    except Exception as e:
+        return False, str(e)[:200]
 
 
 def marcar_comprada_en_sheet(fila_id: str):
@@ -1302,6 +1326,13 @@ def vista_historial():
         st.info("Todavía no hay muestras guardadas.")
         return
 
+    # Avisos del borrado anterior (se muestran despues del rerun)
+    if st.session_state.pop("borrado_ok", None):
+        st.success("Muestra eliminada.")
+    err_borrado = st.session_state.pop("borrado_error", None)
+    if err_borrado:
+        st.warning(f"No se pudo eliminar: {err_borrado}")
+
     filas = list(reversed(filas))  # la mas reciente arriba
 
     compradores = sorted({str(f.get("comprador") or "").strip()
@@ -1357,6 +1388,32 @@ def vista_historial():
             url = str(f.get("foto_url") or "").strip()
             if url:
                 st.caption(f"[Ver foto completa en Drive]({url})")
+
+            # Borrar, con doble confirmacion: el primer boton no borra nada,
+            # solo pide confirmar. Asi un dedazo en el celular no elimina una
+            # muestra que ya no se puede recuperar.
+            fid = str(f.get("id") or "").strip()
+            if fid:
+                if st.session_state.get("borrar_pendiente") == fid:
+                    b1, b2 = st.columns(2)
+                    with b1:
+                        if st.button("⚠️ Confirmar eliminar", key=f"conf_{fid}",
+                                      type="primary", use_container_width=True):
+                            ok, err = eliminar_de_sheet(fid)
+                            st.session_state.borrar_pendiente = None
+                            if ok:
+                                st.session_state.borrado_ok = True
+                            else:
+                                st.session_state.borrado_error = err
+                            st.rerun()
+                    with b2:
+                        if st.button("Cancelar", key=f"canc_{fid}", use_container_width=True):
+                            st.session_state.borrar_pendiente = None
+                            st.rerun()
+                else:
+                    if st.button("🗑️ Eliminar", key=f"del_{fid}"):
+                        st.session_state.borrar_pendiente = fid
+                        st.rerun()
         st.markdown("---")
 
     if len(filas) > 80:
@@ -1612,7 +1669,7 @@ if foto is not None:
             proveedor = st.text_input("Proveedor")
         col_c, col_d = st.columns(2)
         with col_c:
-            costo = st.text_input("Costo (USD)")
+            costo = st.text_input("Costo")
         with col_d:
             ya_comprada = st.checkbox("Ya la compré")
         enviado = st.form_submit_button("Guardar")
