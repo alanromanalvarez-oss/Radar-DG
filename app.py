@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v28.1"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v28.2"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -435,7 +435,15 @@ def distancia(hash_a: str, hash_b: str) -> int:
         return 999
 
 
-def thumb_b64(pil_img: Image.Image, size=(180, 180), quality=60) -> str:
+def thumb_b64(pil_img: Image.Image, size=(480, 480), quality=62) -> str:
+    """v28.2: subido de 180px a 480px. Motivo: Google no deja que una cuenta de
+    servicio sea dueña de archivos en un Drive personal (error de cuota), asi
+    que la foto completa en Drive solo funciona con una Unidad compartida de
+    Workspace. Mientras tanto, la foto que va DENTRO del Sheet pasa de 180px
+    (apenas util para reprocesar) a 480px, con la que ya se reconoce la
+    muestra al revisarla despues.
+    Medido: 480px con calidad 62 ocupa ~9,200 caracteres, bien por debajo del
+    limite de 50,000 por celda de Google Sheets."""
     im = pil_img.convert("RGB")
     im.thumbnail(size)
     buf = io.BytesIO()

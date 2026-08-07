@@ -1,4 +1,39 @@
-# Radar DG — guía de puesta en marcha (v28)
+# Radar DG — guía de puesta en marcha (v28.2)
+
+**Novedades de v28.2 — fotos de las muestras**
+
+Google no permite que una cuenta de servicio sea dueña de archivos en un Drive
+personal (da error de cuota de almacenamiento). No es un problema de permisos
+ni algo que se pueda rodear compartiendo mejor la carpeta: es una restricción
+de Google. Por eso se hicieron dos cosas:
+
+**1. Ya funcionando, sin configurar nada:** la foto que se guarda dentro del
+Sheet pasó de 180px a **480px**. Con 180px apenas servía para reprocesar; con
+480px se reconoce la muestra perfectamente al revisarla después. Ocupa ~9,200
+caracteres, bien lejos del límite de 50,000 por celda.
+
+**2. Para cuando tengan Google Workspace** (correos corporativos tipo
+nombre@dorothygaynor.com), la foto en resolución completa con link sí es
+posible, usando una **Unidad compartida** en vez de una carpeta:
+
+  1. En Google Drive, panel izquierdo → **Unidades compartidas** → **Nueva**.
+     Nombrala por ejemplo "Radar DG".
+  2. Clic derecho sobre la unidad → **Administrar miembros** → agregá
+     `radar-dg-bot@radar-dg.iam.gserviceaccount.com` con rol
+     **Administrador de contenido**.
+  3. Entrá a la unidad y copiá el ID de la URL (la parte después de
+     `/folders/`).
+  4. Ponelo en Secrets como `GDRIVE_FOLDER_ID`, arriba de `[gcp_service_account]`.
+
+  La diferencia clave: en una Unidad compartida los archivos pertenecen a la
+  organización, no a una persona, y ahí la cuenta de servicio sí puede
+  escribir. Si no tienen Workspace, esta opción no está disponible y conviene
+  quedarse con la foto de 480px en el Sheet.
+
+Si Drive falla por cualquier motivo, la app ahora **dice exactamente cuál** en
+vez de un "no se pudo" genérico.
+
+
 
 **Novedades de v28 — el arreglo de fondo de la efectividad**
 
