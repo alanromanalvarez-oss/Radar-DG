@@ -31,7 +31,7 @@ from PIL import Image, ImageOps
 import imagehash
 import anthropic
 
-VERSION = "v28.2"  # Control de versiones (a pedido de Alan): se actualiza a mano
+VERSION = "v29"  # Control de versiones (a pedido de Alan): se actualiza a mano
                  # en cada entrega, se muestra en la pantalla principal y en la
                  # barra lateral para que el equipo sepa siempre que version
                  # esta desplegada sin tener que preguntar.
@@ -1285,6 +1285,85 @@ def vista_mapa():
             cols = st.columns(5)
 
 
+def vista_historial():
+    """v29: ver las muestras guardadas CON su foto.
+
+    Hacia falta porque la foto se guarda dentro del Sheet como texto (base64)
+    y Google Sheets no sabe mostrarla: en la celda solo se ve un bloque
+    enorme de caracteres. Aca se decodifica y se ve normal."""
+    st.markdown(CSS_MAPA, unsafe_allow_html=True)
+
+    if not sheets_disponible():
+        st.info("La base compartida no está conectada, así que todavía no hay historial.")
+        return
+
+    filas = leer_historial_compartido()
+    if not filas:
+        st.info("Todavía no hay muestras guardadas.")
+        return
+
+    filas = list(reversed(filas))  # la mas reciente arriba
+
+    compradores = sorted({str(f.get("comprador") or "").strip()
+                          for f in filas if str(f.get("comprador") or "").strip()})
+    c1, c2 = st.columns(2)
+    with c1:
+        quien = st.selectbox("Comprador", ["Todos"] + compradores, key="hist_comprador")
+    with c2:
+        solo_compradas = st.checkbox("Solo las marcadas como compradas", key="hist_compradas")
+
+    if quien != "Todos":
+        filas = [f for f in filas if str(f.get("comprador") or "").strip() == quien]
+    if solo_compradas:
+        filas = [f for f in filas if str(f.get("comprada", "")).strip().upper() == "SI"]
+
+    k1, k2, k3 = st.columns(3)
+    kpi(k1, "Muestras", f"{len(filas):,}", "en esta vista")
+    kpi(k2, "Compradas",
+        f"{sum(1 for f in filas if str(f.get('comprada','')).strip().upper() == 'SI'):,}", "")
+    kpi(k3, "Compradores", f"{len(compradores):,}", "registrando")
+
+    st.markdown('<div class="dg-h">Muestras guardadas</div>', unsafe_allow_html=True)
+    for f in filas[:80]:
+        cols = st.columns([1, 3])
+        with cols[0]:
+            b64 = str(f.get("foto_base64") or "").strip()
+            if b64:
+                try:
+                    st.image(base64.b64decode(b64), use_container_width=True)
+                except Exception:
+                    st.caption("(no se pudo mostrar la foto)")
+            else:
+                st.caption("(sin foto)")
+        with cols[1]:
+            reco = RECOMENDACIONES.get(f.get("recomendacion"), f.get("recomendacion") or "")
+            comprada = " · ✅ COMPRADA" if str(f.get("comprada", "")).strip().upper() == "SI" else ""
+            st.markdown(f"**{f.get('categoria') or 'Sin categoría'}** — {reco}{comprada}")
+            det = []
+            if f.get("proveedor"):
+                det.append(f"Proveedor: {f['proveedor']}")
+            if f.get("costo"):
+                det.append(f"Costo: {f['costo']}")
+            if f.get("comprador"):
+                det.append(f"Por: {f['comprador']}")
+            if f.get("timestamp"):
+                det.append(str(f["timestamp"]).replace("T", " "))
+            if det:
+                st.caption(" · ".join(det))
+            if f.get("top_sku_similar"):
+                st.caption(f"Más parecido: **{f['top_sku_similar']}** ({f.get('top_similitud_pct','')}%)")
+            if f.get("motivo"):
+                st.caption(str(f["motivo"]))
+            url = str(f.get("foto_url") or "").strip()
+            if url:
+                st.caption(f"[Ver foto completa en Drive]({url})")
+        st.markdown("---")
+
+    if len(filas) > 80:
+        st.caption(f"Mostrando las 80 más recientes de {len(filas)}. "
+                   "Usá la descarga en CSV de la barra lateral para verlas todas.")
+
+
 def fmt_moneda(v):
     if v is None or v == "":
         return "—"
@@ -1328,20 +1407,29 @@ if "categoria_forzada" not in st.session_state:
 if "vista" not in st.session_state:
     st.session_state.vista = "radar"
 
-nav1, nav2 = st.columns(2)
+nav1, nav2, nav3 = st.columns(3)
 with nav1:
-    if st.button("📷 Analizar muestra", use_container_width=True,
+    if st.button("📷 Analizar", use_container_width=True,
                   type="primary" if st.session_state.vista == "radar" else "secondary"):
         st.session_state.vista = "radar"
         st.rerun()
 with nav2:
-    if st.button("🗺️ Mapa del catálogo", use_container_width=True,
+    if st.button("🗺️ Mapa", use_container_width=True,
                   type="primary" if st.session_state.vista == "mapa" else "secondary"):
         st.session_state.vista = "mapa"
+        st.rerun()
+with nav3:
+    if st.button("📋 Historial", use_container_width=True,
+                  type="primary" if st.session_state.vista == "historial" else "secondary"):
+        st.session_state.vista = "historial"
         st.rerun()
 
 if st.session_state.vista == "mapa":
     vista_mapa()
+    st.stop()
+
+if st.session_state.vista == "historial":
+    vista_historial()
     st.stop()
 
 col_reset1, col_reset2 = st.columns([3, 1])
