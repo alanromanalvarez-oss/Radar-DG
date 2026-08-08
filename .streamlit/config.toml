@@ -1,6 +1,23 @@
-# Paleta pensada para acompañar el isologo de Dorothy Gaynor (wordmark blanco,
-# minimalista). Este archivo SI se sube a GitHub (a diferencia de secrets.toml,
-# no tiene ninguna clave adentro) -- Streamlit Cloud lo toma solo.
+# Este archivo SI se sube a GitHub (a diferencia de secrets.toml, no tiene
+# ninguna clave adentro) -- Streamlit Cloud lo toma solo.
+
+[server]
+# EL ARREGLO DEL BUG DE ANDROID (v30.1).
+# Sintoma: apretabas "Upload", abrias la camara, y si tardabas un rato en
+# sacar la foto, al volver la foto no se adjuntaba. Habia que ser muy rapido.
+#
+# Causa: cuando se abre la app de camara, el navegador queda en segundo plano
+# y la conexion con el servidor se corta. La documentacion de Streamlit lo
+# dice textual sobre esta opcion: "el servidor puede limpiar el estado de la
+# sesion, LOS ARCHIVOS SUBIDOS, etc. para una sesion sin conexion activa
+# despues de que pase este tiempo". El valor por defecto son 120 segundos,
+# o sea 2 minutos: si tardabas mas, la sesion ya estaba destruida y la foto
+# no tenia a donde llegar.
+#
+# Subirlo a 900 (15 minutos) le da al comprador tiempo de sobra para acomodar
+# la muestra, encuadrar y sacar la foto sin perder nada.
+disconnectedSessionTTL = 900
+
 [theme]
 base = "light"
 primaryColor = "#9C6B3E"           # camel/cognac -- guiño al cuero, acompaña un logo blanco/negro sin competir con el
